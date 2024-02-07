@@ -22,7 +22,7 @@ class UDPPublisher(Node):
 		self.i = 0
 
 	def timer_callback(self):
-		msg = json.dumps({"car": car, "msg": self.i})
+		msg = json.dumps({"car": self.car, "msg": self.i})
 		msg = msg.encode()
 
 		for ip in self.allips:
