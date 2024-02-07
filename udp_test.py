@@ -3,6 +3,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 import socket
 from time import sleep
+import json
 
 class UDPPublisher(Node):
 	def __init__(self, car):
@@ -17,8 +18,9 @@ class UDPPublisher(Node):
 		self.allips = [ip[-1][0] for ip in interfaces]
 
 		self.timer = self.create_timer(0.1, self.timer_callback)
-		self.msg = f"I am car {car}"
+		self.msg = json.dumps({"car": car})
 		self.msg = self.msg.encode()
+		self.car = car
 
 	def timer_callback(self):
 		for ip in self.allips:
@@ -31,7 +33,9 @@ class UDPPublisher(Node):
 			sock.close()
 
 		data, addr = self.client_sock.recvfrom(1024)
-		print("received message: %s"%data)
+		data_json = json.loads(data.decode())
+		if data_json['car'] != self.car:
+			print(f"received message from car: {data_json['car']}")
 
 rclpy.init(args=None)
 udp_publisher = UDPPublisher(int(input()))
