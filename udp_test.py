@@ -17,25 +17,29 @@ class UDPPublisher(Node):
 		interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
 		self.allips = [ip[-1][0] for ip in interfaces]
 
-		self.timer = self.create_timer(0.1, self.timer_callback)
-		self.msg = json.dumps({"car": car})
-		self.msg = self.msg.encode()
+		self.timer = self.create_timer(1, self.timer_callback)
 		self.car = car
+		self.i = 0
 
 	def timer_callback(self):
+		msg = json.dumps({"car": car, "msg": self.i})
+		msg = msg.encode()
+
 		for ip in self.allips:
-			print(f'sending on {ip}')
+			# print(f'sending on {ip}')
 			sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
 			sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 			sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 			sock.bind((ip,0))
-			sock.sendto(self.msg, ("255.255.255.255", 37020))
+			sock.sendto(msg, ("255.255.255.255", 37020))
 			sock.close()
+
+		self.i += 1
 
 		data, addr = self.client_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
 		if data_json['car'] != self.car:
-			print(f"received message from car: {data_json['car']}")
+			print(f"received message {data_json['msg']} from car: {data_json['car']}")
 
 rclpy.init(args=None)
 udp_publisher = UDPPublisher(int(input()))
