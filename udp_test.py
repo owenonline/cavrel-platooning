@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 import socket
 from time import sleep
@@ -17,8 +18,8 @@ class UDPPublisher(Node):
 		interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
 		self.allips = [ip[-1][0] for ip in interfaces]
 
-		self.broadcast_timer = self.create_timer(1, self.broadcast_timer_callback)
-		self.listen_timer = self.create_timer(0.001, self.listen_timer_callback)
+		self.broadcast_timer = self.create_timer(1, self.broadcast_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
+		self.listen_timer = self.create_timer(0.01, self.listen_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
 		self.car = car
 		self.i = 0
 		self.received_messages = []
