@@ -1,13 +1,19 @@
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import NavSatFix
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
+from scipy.spatial.transform import Rotation
 import socket
 from time import sleep, time
 import json
 import threading
+import numpy as np
+import math
 
 MISSIONSTART = 0
 ARMING = 1
@@ -16,24 +22,30 @@ DISARMING = 3
 MISSIONCOMPLETE = 4
 ABORT = -1
 
+NUM_CARS = 1 # number of total cars in the network, including the ego vehicle
+EARTH_RADIUS = 6371e3 # earth radius in meters
+
 class UDPPublisher(Node):
 	def __init__(self, car):
 		super().__init__('udp_publisher')
 
         # setup related to broadcasting
-		# self.client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
-		# self.client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-		# self.client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-		# self.client_sock.bind(("", 37020))
+		self.client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
+		self.client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+		self.client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+		self.client_sock.bind(("", 37020))
 
-		# interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
-		# self.allips = [ip[-1][0] for ip in interfaces]
+		interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
+		self.allips = [ip[-1][0] for ip in interfaces]
 
-		# self.broadcast_timer = self.create_timer(1, self.broadcast_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
-		# self.listen_timer = self.create_timer(0.01, self.listen_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
-		# self.car = car
-		# self.i = 0
-		# self.received_messages = []
+		self.broadcast_timer = self.create_timer(1, self.broadcast_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
+		self.listen_timer = self.create_timer(0.01, self.listen_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
+		self.car = car
+		self.car_positions = {}
+
+		# setup related to position
+		self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		
         # setup related to motion
 		print('setting up motion clients')
@@ -60,15 +72,21 @@ class UDPPublisher(Node):
 		# setup mission state
 		self.mission_status = MISSIONSTART
 
-	# if listen for hard or soft abort commands
 	def listen_for_stop(self):
+		"""Listens for a KILL command from the user to abort the mission immediately."""
 		while True:
 			command = input()
 			if command.upper() == 'KILL':
 				self.mission_status = ABORT
 
 	def broadcast_timer_callback(self):
-		msg = json.dumps({"car": self.car, "msg": self.i})
+		"""Broadcasts the car's current GPS position to all other cars in the network"""
+
+		# if we haven't received a GPS position yet, don't broadcast
+		if self.satellite is None:
+			return
+
+		msg = json.dumps({"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude})
 		msg = msg.encode()
 
 		for ip in self.allips:
@@ -80,16 +98,53 @@ class UDPPublisher(Node):
 			sock.sendto(msg, ("255.255.255.255", 37020))
 			sock.close()
 
-		self.i += 1
-
 	def listen_timer_callback(self):
-		data, addr = self.client_sock.recvfrom(1024)
+		"""Listens for GPS positions from other cars in the network, converts them to the local frame of the car, and stores them in a dictionary."""
+
+		data, _ = self.client_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
-		if data_json['car'] != self.car and not data_json['msg'] in self.received_messages:
-			print(f"received message {data_json['msg']} from car: {data_json['car']}")
-			self.received_messages.append(data_json['msg'])
+		if data_json['car'] != self.car:
+			current_lat = self.satellite.latitude
+			current_lon = self.satellite.longitude
+			current_xyz = np.array([self.telem.pose.pose.position.x, self.telem.pose.pose.position.y, 0])
+			current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
+
+			# Convert lat, lon to radians
+			target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
+			current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
+
+			# Equirectangular projection
+			x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
+			y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
+
+			# Relative position in global frame
+			relative_position = np.array([x, y, 0])
+
+			# Convert quaternion to rotation matrix
+			rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
+
+			# Rotate relative position into local frame
+			local_position = rotation_matrix @ relative_position
+
+			local_position_translated = local_position + np.array(current_xyz)
+
+			self.car_positions[data_json['car']] = local_position_translated[:2] # only store x and y
+
+	def telem_listener_callback(self, msg):
+		"""Saves the latest telemetry message"""
+		self.telem = msg
+
+	def satellite_listener_callback(self, msg):
+		"""Saves the latest GPS message"""
+		self.satellite = msg
 
 	def mission_timer_callback(self):
+		"""Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
+
+		# wait until we've received position data from all the other cars before starting the mission
+		if len(list(self.car_positions.values())) < NUM_CARS - 1:
+			return
+
 		# start the chain of events that arms the rover
 		if self.mission_status == MISSIONSTART:
 			print("switching to offboard mode")
@@ -137,6 +192,7 @@ class UDPPublisher(Node):
 
 				self.mission_status = DISARMING
 			else:
+
 				msg.linear.x = 1.0
 				msg.linear.y = 0.0
 				msg.linear.z = 0.0
