@@ -5,10 +5,10 @@ import json
 
 client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
 client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 client_sock.bind(("", 37020))
 
-interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
+hostname = socket.gethostname()
+interfaces = socket.getaddrinfo(hostname, None, socket.AF_INET)
 allips = [ip[-1][0] for ip in interfaces]
 
 def sat_callback(data):
