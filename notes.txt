@@ -1,3 +1,3 @@
-for leader: sudo apt-get install ros-kinetic-nmea-navsat-driver
+for leader: sudo apt-get install ros-kinetic-nmea-navsat-driver (also bootstrap.pypa.io/pip/2.7/get-pip.py)
 to read messages from serial devices: sudo apt-get install minicom then sudo dmesg | grep tty to get ports and then sudo minicom -b 115200 -o -D device path
 for follower: install mavros
