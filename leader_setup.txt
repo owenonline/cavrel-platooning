@@ -1,0 +1,3 @@
+source catkin_ws/devel/setup.bash
+roscore > roscore_out.txt 2>&1 &
+rosrun nmea_navsat_driver nmea_serial_driver _port:=/dev/ttyACM0 _baud:=115200 > nmea_out.txt 2>&1 &
