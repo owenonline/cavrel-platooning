@@ -12,7 +12,7 @@ interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=soc
 allips = [ip[-1][0] for ip in interfaces]
 
 def sat_callback(data):
-	rospy.loginfo(f"Latitude: {data.latitude}, Longitude: {data.longitude}")
+	rospy.loginfo("Latitude: "+str(data.latitude)+", Longitude: "+str(data.longitude))
 
 	# msg = json.dumps({"car": 0, "lat": data.latitude, "lon": data.longitude})
 	# msg = msg.encode()
