@@ -5,14 +5,15 @@ from sensor_msgs.msg import NavSatFix
 # from math import radians, cos, sin, sqrt, atan2
 from time import time
 import socket
+import struct
 import json
 
 EARTH_RADIUS = 6371e3 # earth radius in meters
 # geodesic = pyproj.Geod(ellps='WGS84')
 
-client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
-client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-client_sock.bind(("", 37020))
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+ttl = struct.pack('b', 1)
+sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
 # saved_point = None
 
@@ -29,7 +30,7 @@ def sat_callback(data):
 	msg = json.dumps({"car": 0, "lat": data.latitude, "lon": data.longitude, "time": time(), "abort": False})#, "heading": heading, "distance": distance, "velocity": velocity, "time": time2})
 	msg = msg.encode()
 
-	client_sock.sendto(msg, ("255.255.255.255", 37020))
+	sock.sendto(msg, ('224.0.0.1', 5004))
 
 def sat_listener():
 	rospy.init_node('satellite_listener', anonymous=True)
