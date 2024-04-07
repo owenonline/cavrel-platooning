@@ -46,9 +46,9 @@ class UDPPublisher(Node):
         # setup related to udp communication
 		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
 		self.broadcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-		self.broadcast_sock.bind(("", int(f"3702{car}")))
+		self.broadcast_sock.bind(("", int(f"37020")))
 		self.listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		self.listen_sock.bind(("", int(f"3702{car}")))
+		self.listen_sock.bind(("", int(f"37020")))
 
 		interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
 		self.allips = [ip[-1][0] for ip in interfaces]
