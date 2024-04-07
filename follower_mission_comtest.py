@@ -63,30 +63,30 @@ class UDPPublisher(Node):
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		
-        # setup related to motion
-		print('setting up motion clients')
-		self.set_mode_client = self.create_client(SetMode, '/mavros/set_mode')
-		while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
-			print('set mode service not available, waiting again...')
+        # # setup related to motion
+		# print('setting up motion clients')
+		# self.set_mode_client = self.create_client(SetMode, '/mavros/set_mode')
+		# while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
+		# 	print('set mode service not available, waiting again...')
 			
-		self.arming_client = self.create_client(CommandBool, '/mavros/cmd/arming')
-		while not self.arming_client.wait_for_service(timeout_sec=1.0):
-			print('arming service not available, waiting again...')
+		# self.arming_client = self.create_client(CommandBool, '/mavros/cmd/arming')
+		# while not self.arming_client.wait_for_service(timeout_sec=1.0):
+		# 	print('arming service not available, waiting again...')
 
-		self.killswitch_client = self.create_client(CommandLong, '/mavros/cmd/command')
-		while not self.killswitch_client.wait_for_service(timeout_sec=1.0):
-			print('killswitch service not available, waiting again...')
+		# self.killswitch_client = self.create_client(CommandLong, '/mavros/cmd/command')
+		# while not self.killswitch_client.wait_for_service(timeout_sec=1.0):
+		# 	print('killswitch service not available, waiting again...')
 
-		self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
-		self.mission_timer = self.create_timer(0.1, self.mission_timer_callback)
+		# self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
+		# self.mission_timer = self.create_timer(0.1, self.mission_timer_callback)
 
-		# setup kill switch
-		self.stop_thread = threading.Thread(target=self.listen_for_stop)
-		self.stop_thread.daemon = True
-		self.stop_thread.start()
+		# # setup kill switch
+		# self.stop_thread = threading.Thread(target=self.listen_for_stop)
+		# self.stop_thread.daemon = True
+		# self.stop_thread.start()
 
-		# setup mission state
-		self.mission_status = MISSIONSTART
+		# # setup mission state
+		# self.mission_status = MISSIONSTART
 
 	def listen_for_stop(self):
 		"""Listens for a KILL command from the user to abort the mission immediately."""
@@ -146,6 +146,12 @@ class UDPPublisher(Node):
 			position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
 			self.car_positions[data_json['car']].append(position_update)
 			self.car_positions[data_json['car']] = self.car_positions[data_json['car']].copy()[-2:] # only store the last 2 positions
+			
+			if data_json['car'] == 0:
+				x1, y1, time1 = self.car_positions[0][0]
+				x2, y2, time2 = self.car_positions[0][1]
+				print(f"lead vehicle most recent update:\n\tx:\ty:\n{time1}\t{x1}\t{y1}\n{time2}\t{x2}\t{y2}\n")
+                
 
 	def telem_listener_callback(self, msg):
 		"""Saves the latest telemetry message"""
