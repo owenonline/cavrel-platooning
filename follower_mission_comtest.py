@@ -46,6 +46,7 @@ class UDPPublisher(Node):
         # setup related to udp communication
 		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
 		self.broadcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+		self.broadcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self.broadcast_sock.bind(("", 37020))
 		self.listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self.listen_sock.bind(("", 37020))
