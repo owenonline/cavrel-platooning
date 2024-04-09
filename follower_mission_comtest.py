@@ -1,7 +1,7 @@
 import struct
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
-from geometry_msgs.msg import Twist, TwistStamped
+from geometry_msgs.msg import Twist, TwistStamped, PoseStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float64
@@ -65,7 +65,9 @@ class UDPPublisher(Node):
 		self.car_positions = defaultdict(list)
 
 		# setup related to position
-		self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		# self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.satellite_msgs = []
+		self.telem_subscription = self.create_subscription(PoseStamped, '/mavros/local_position/pose', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 
@@ -80,7 +82,7 @@ class UDPPublisher(Node):
 		msg = json.dumps({"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time()})
 		msg = msg.encode()
 
-		self.broadcast_sock.sendto(msg, ("255.255.255.255", 37020))
+		self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
 
 	def listen_timer_callback(self):
 		"""Listens for GPS positions from other cars in the network, converts them to the local frame of the car, and stores them in a dictionary."""
@@ -89,10 +91,16 @@ class UDPPublisher(Node):
 		data_json = json.loads(data.decode())
 
 		if data_json['car'] <= self.car:
-			current_lat = self.satellite.latitude
-			current_lon = self.satellite.longitude
-			current_xyz = np.array([self.telem.pose.pose.position.x, self.telem.pose.pose.position.y, 0])
-			current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
+			try:
+				current_lat = self.satellite.latitude
+				current_lon = self.satellite.longitude
+			except:
+				return
+
+
+			current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, 0])
+			# current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
+			current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
 
 			# Convert lat, lon to radians
 			target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
@@ -114,13 +122,21 @@ class UDPPublisher(Node):
 			local_position_translated = local_position + np.array(current_xyz)
 
 			position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
+			
+			if data_json['car'] == 0:
+				print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
+				print(f"relative car position: x: {relative_position[0]:.5f}, y: {relative_position[1]:.5f}, z: {relative_position[2]:.5f}")
+				print(f"local car position: x: {local_position[0]:.5f}, y: {local_position[1]:.5f}, z: {local_position[2]:.5f}")
+				print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
+
+
 			self.car_positions[data_json['car']].append(position_update)
 			self.car_positions[data_json['car']] = self.car_positions[data_json['car']].copy()[-2:] # only store the last 2 positions
 			
-			if data_json['car'] == 0:
-				x1, y1, time1 = self.car_positions[0][0]
-				x2, y2, time2 = self.car_positions[0][1]
-				print(f"lead vehicle most recent update:\n\tx:\ty:\n{time1}\t{x1}\t{y1}\n{time2}\t{x2}\t{y2}\n")
+			# if data_json['car'] == 0 and len(self.car_positions[0]) == 2:
+			# 	x1, y1, time1 = self.car_positions[0][0]
+			# 	x2, y2, time2 = self.car_positions[0][1]
+			# 	print(f"lead vehicle most recent update:\n\tx:\ty:\n{time1}\t{x1}\t{y1}\n{time2}\t{x2}\t{y2}\n")
                 
 	def telem_listener_callback(self, msg):
 		"""Saves the latest telemetry message"""
@@ -128,7 +144,18 @@ class UDPPublisher(Node):
 
 	def satellite_listener_callback(self, msg):
 		"""Saves the latest GPS message"""
-		self.satellite = msg
+		
+		# small moving average filter
+		if len(self.satellite_msgs) < 2:
+			self.satellite_msgs.append([msg.latitude, msg.longitude])
+			self.satellite = msg
+		else:
+			new_point = np.average(np.array(self.satellite_msgs[-2:] + [[msg.latitude, msg.longitude]]), axis=0)
+			self.satellite_msgs.append(new_point)
+			self.satellite_msgs = self.satellite_msgs.copy()[-2:]
+			
+			msg.latitude, msg.longitude = new_point
+			self.satellite = msg
 
 	def velocity_listener_callback(self, msg):
 		"""Saves the latest velocity message"""
