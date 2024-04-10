@@ -19,6 +19,7 @@ import json
 import threading
 import numpy as np
 import math
+from geopy.distance import geodesic
 
 MISSIONSTART = 0
 ARMING = 1
@@ -96,42 +97,44 @@ class UDPPublisher(Node):
 				current_lon = self.satellite.longitude
 			except:
 				return
-
-
-			current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, 0])
-			# current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
-			current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
-
-			# Convert lat, lon to radians
-			target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
-			current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
-
-			# Equirectangular projection
-			x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
-			y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
-
-			# Relative position in global frame
-			relative_position = np.array([x, y, 0])
-
-			# Convert quaternion to rotation matrix
-			rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
-
-			# Rotate relative position into local frame
-			local_position = rotation_matrix @ relative_position
-
-			local_position_translated = local_position + np.array(current_xyz)
-
-			position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
 			
-			if data_json['car'] == 0:
-				print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
-				print(f"relative car position: x: {relative_position[0]:.5f}, y: {relative_position[1]:.5f}, z: {relative_position[2]:.5f}")
-				print(f"local car position: x: {local_position[0]:.5f}, y: {local_position[1]:.5f}, z: {local_position[2]:.5f}")
-				print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
+			distance = geodesic((current_lat, current_lon), (data_json['lat'], data_json['lon'])).meters
+			print(f"Distance between cars {self.car} and {data_json['car']}: {distance:.2f} meters")
+
+			# current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, 0])
+			# # current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
+			# current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
+
+			# # Convert lat, lon to radians
+			# target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
+			# current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
+
+			# # Equirectangular projection
+			# x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
+			# y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
+
+			# # Relative position in global frame
+			# relative_position = np.array([x, y, 0])
+
+			# # Convert quaternion to rotation matrix
+			# rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
+
+			# # Rotate relative position into local frame
+			# local_position = rotation_matrix @ relative_position
+
+			# local_position_translated = local_position + np.array(current_xyz)
+
+			# position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
+			
+			# if data_json['car'] == 0:
+			# 	print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
+			# 	print(f"relative car position: x: {relative_position[0]:.5f}, y: {relative_position[1]:.5f}, z: {relative_position[2]:.5f}")
+			# 	print(f"local car position: x: {local_position[0]:.5f}, y: {local_position[1]:.5f}, z: {local_position[2]:.5f}")
+			# 	print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
 
 
-			self.car_positions[data_json['car']].append(position_update)
-			self.car_positions[data_json['car']] = self.car_positions[data_json['car']].copy()[-2:] # only store the last 2 positions
+			# self.car_positions[data_json['car']].append(position_update)
+			# self.car_positions[data_json['car']] = self.car_positions[data_json['car']].copy()[-2:] # only store the last 2 positions
 			
 			# if data_json['car'] == 0 and len(self.car_positions[0]) == 2:
 			# 	x1, y1, time1 = self.car_positions[0][0]
@@ -144,23 +147,11 @@ class UDPPublisher(Node):
 
 	def satellite_listener_callback(self, msg):
 		"""Saves the latest GPS message"""
-		
-		# small moving average filter
-		if len(self.satellite_msgs) < 2:
-			self.satellite_msgs.append([msg.latitude, msg.longitude])
-			self.satellite = msg
-		else:
-			new_point = np.average(np.array(self.satellite_msgs[-2:] + [[msg.latitude, msg.longitude]]), axis=0)
-			self.satellite_msgs.append(new_point)
-			self.satellite_msgs = self.satellite_msgs.copy()[-2:]
-			
-			msg.latitude, msg.longitude = new_point
-			self.satellite = msg
+		self.satellite = msg
 
 	def velocity_listener_callback(self, msg):
 		"""Saves the latest velocity message"""
 		self.velocity = msg
-
 
 rclpy.init(args=None)
 udp_publisher = UDPPublisher(int(input()))

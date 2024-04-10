@@ -176,7 +176,7 @@ class UDPPublisher(Node):
 			for target in targets:
 				x_target, y_target, head_target, v_target, position = target
 				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
-				total_cost += goal_follow_distance - np.sqrt((x_target + v_target*np.cos(head_target) - x - v*np.cos(head))**2 + (y_target + v_target*np.sin(head_target) - y - v*np.sin(head))**2)
+				total_cost += np.abs(goal_follow_distance - np.sqrt((x_target + v_target*np.cos(head_target) - x - v*np.cos(head))**2 + (y_target + v_target*np.sin(head_target) - y - v*np.sin(head))**2))
 
 			return total_cost
 		
