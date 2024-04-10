@@ -67,6 +67,7 @@ class UDPPublisher(Node):
 
 		# setup related to position
 		# self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.satellite = None
 		self.satellite_msgs = []
 		self.telem_subscription = self.create_subscription(PoseStamped, '/mavros/local_position/pose', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
