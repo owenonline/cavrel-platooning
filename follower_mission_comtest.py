@@ -102,7 +102,8 @@ class UDPPublisher(Node):
 			distance = geodesic((current_lat, current_lon), (data_json['lat'], data_json['lon'])).meters
 			print(f"Distance between cars {self.car} and {data_json['car']}: {distance:.2f} meters")
 
-			current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, self.telem.pose.position.z])
+			current_xyz = np.array([self.telem.pose.pose.position.x, self.telem.pose.pose.position.y, self.telem.pose.pose.position.z])
+			# current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, self.telem.pose.position.z])
 			current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, self.telem.pose.pose.orientation.z, self.telem.pose.pose.orientation.w])
 			# current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
 
