@@ -66,10 +66,10 @@ class UDPPublisher(Node):
 		self.car_positions = defaultdict(list)
 
 		# setup related to position
-		# self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.satellite = None
 		self.satellite_msgs = []
-		self.telem_subscription = self.create_subscription(PoseStamped, '/mavros/local_position/pose', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		# self.telem_subscription = self.create_subscription(PoseStamped, '/mavros/local_position/pose', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 
@@ -102,9 +102,9 @@ class UDPPublisher(Node):
 			distance = geodesic((current_lat, current_lon), (data_json['lat'], data_json['lon'])).meters
 			print(f"Distance between cars {self.car} and {data_json['car']}: {distance:.2f} meters")
 
-			current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, 0])
-			# current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
-			current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
+			current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, self.telem.pose.position.z])
+			current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, self.telem.pose.pose.orientation.z, self.telem.pose.pose.orientation.w])
+			# current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
 
 			# Convert lat, lon to radians
 			target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
