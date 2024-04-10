@@ -129,7 +129,8 @@ class UDPPublisher(Node):
 			position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
 			
 			if data_json['car'] == 0:
-				print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
+				print(f"ego_position: x: {self.telem.pose.pose.orientation.x:.5f}, y: {self.telem.pose.pose.orientation.y:.5f}, z: {self.telem.pose.pose.orientation.z:.5f}")
+				# print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
 				print(f"relative car position: x: {relative_position[0]:.5f}, y: {relative_position[1]:.5f}, z: {relative_position[2]:.5f}")
 				print(f"local car position: x: {local_position[0]:.5f}, y: {local_position[1]:.5f}, z: {local_position[2]:.5f}")
 				print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
