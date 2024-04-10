@@ -40,6 +40,7 @@ MAX_STEER = np.pi/4
 WHEELBASE = 1.0
 CAR_LENGTH = 1.0
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
+DUE_EAST = 90
 
 class UDPPublisher(Node):
 	def __init__(self, car):
@@ -71,7 +72,10 @@ class UDPPublisher(Node):
 		self.satellite_msgs = []
 		# self.telem_subscription = self.create_subscription(PoseStamped, '/mavros/local_position/pose', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.velocity = None
 		self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.heading = None
+		self.heading_subscriber = self.create_subscription(Float64, '/mavros/global_position/compass_hdg', self.heading_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 
 	def broadcast_timer_callback(self):
 		"""Broadcasts the car's current GPS position to all other cars in the network"""
@@ -102,40 +106,54 @@ class UDPPublisher(Node):
 			distance = geodesic((current_lat, current_lon), (data_json['lat'], data_json['lon'])).meters
 			print(f"Distance between cars {self.car} and {data_json['car']}: {distance:.2f} meters")
 
-			current_xyz = np.array([self.telem.pose.pose.position.x, self.telem.pose.pose.position.y, self.telem.pose.pose.position.z])
-			# current_xyz = np.array([self.telem.pose.position.x, self.telem.pose.position.y, self.telem.pose.position.z])
-			current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, self.telem.pose.pose.orientation.z, self.telem.pose.pose.orientation.w])
-			# current_quaternion = np.array([self.telem.pose.orientation.x, self.telem.pose.orientation.y, self.telem.pose.orientation.z, self.telem.pose.orientation.w])
+			# # approach 1: current approach, but actually subtract the car's position from the final calculated position
+			# current_xyz = np.array([self.telem.pose.pose.position.x, self.telem.pose.pose.position.y, self.telem.pose.pose.position.z])
+			# current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, self.telem.pose.pose.orientation.z, self.telem.pose.pose.orientation.w])
 
-			# Convert lat, lon to radians
+			# # Convert lat, lon to radians
+			# target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
+			# current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
+
+			# # Equirectangular projection
+			# # this appears to give the correct relative position not accounting for the rotation of the vehicle
+			# x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
+			# y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
+
+			# # Relative position
+			# relative_position = np.array([x, y, 0])
+
+			# # Convert quaternion to rotation matrix
+			# rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
+
+			# # Rotate relative position into local frame
+			# local_position = rotation_matrix @ relative_position
+
+			# local_position_translated = local_position + np.array(current_xyz)
+   
+			# if data_json['car'] == 0:
+			# 	print(f"ego_position: x: {self.telem.pose.pose.position.x:.5f}, y: {self.telem.pose.pose.position.y:.5f}, z: {self.telem.pose.pose.position.z:.5f}")
+			# 	# print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
+			# 	print(f"relative car position: x: {relative_position[0]:.5f}, y: {relative_position[1]:.5f}, z: {relative_position[2]:.5f}")
+			# 	print(f"local car position: x: {local_position[0]:.5f}, y: {local_position[1]:.5f}, z: {local_position[2]:.5f}")
+			# 	print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
+
+			# approach 2: use latitude and longitude to get x, y offset manually
 			target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
 			current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
 
-			# Equirectangular projection
 			x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
 			y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
 
-			# Relative position in global frame
-			relative_position = np.array([x, y, 0])
+			angle = math.radians(self.heading.data - DUE_EAST)
+			qx = math.cos(angle) * x - math.sin(angle) * y
+			qy = math.sin(angle) * x + math.cos(angle) * y
+			rotated_point = np.array([qx, qy, 0])
 
-			# Convert quaternion to rotation matrix
-			rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
-
-			# Rotate relative position into local frame
-			local_position = rotation_matrix @ relative_position
-
-			local_position_translated = local_position + np.array(current_xyz)
-
-			position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
-			
 			if data_json['car'] == 0:
-				print(f"ego_position: x: {self.telem.pose.pose.orientation.x:.5f}, y: {self.telem.pose.pose.orientation.y:.5f}, z: {self.telem.pose.pose.orientation.z:.5f}")
-				# print(f"ego_position: x: {self.telem.pose.orientation.x:.5f}, y: {self.telem.pose.orientation.y:.5f}, z: {self.telem.pose.orientation.z:.5f}")
-				print(f"relative car position: x: {relative_position[0]:.5f}, y: {relative_position[1]:.5f}, z: {relative_position[2]:.5f}")
-				print(f"local car position: x: {local_position[0]:.5f}, y: {local_position[1]:.5f}, z: {local_position[2]:.5f}")
-				print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
+				print(f"ego_position: x: {self.telem.pose.pose.position.x:.5f}, y: {self.telem.pose.pose.position.y:.5f}, z: {self.telem.pose.pose.position.z:.5f}")
+				print(f"other car position: x: {rotated_point[0]:.5f}, y: {rotated_point[1]:.5f}, z: {rotated_point[2]:.5f}")
 
-
+			# position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
 			# self.car_positions[data_json['car']].append(position_update)
 			# self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-2:] # only store the last 2 positions
 			
@@ -155,6 +173,10 @@ class UDPPublisher(Node):
 	def velocity_listener_callback(self, msg):
 		"""Saves the latest velocity message"""
 		self.velocity = msg
+
+	def heading_listener_callback(self, msg):
+		"""Saves the latest heading message"""
+		self.heading = msg
 
 rclpy.init(args=None)
 udp_publisher = UDPPublisher(int(input()))
