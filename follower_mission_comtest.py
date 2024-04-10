@@ -134,13 +134,13 @@ class UDPPublisher(Node):
 				print(f"local car position translated: x: {local_position_translated[0]:.5f}, y: {local_position_translated[1]:.5f}, z: {local_position_translated[2]:.5f}")
 
 
-			self.car_positions[data_json['car']].append(position_update)
-			self.car_positions[data_json['car']] = self.car_positions[data_json['car']].copy()[-2:] # only store the last 2 positions
+			# self.car_positions[data_json['car']].append(position_update)
+			# self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-2:] # only store the last 2 positions
 			
-			if data_json['car'] == 0 and len(self.car_positions[0]) == 2:
-				x1, y1, time1 = self.car_positions[0][0]
-				x2, y2, time2 = self.car_positions[0][1]
-				print(f"lead vehicle most recent update:\n\tx:\ty:\n{time1}\t{x1}\t{y1}\n{time2}\t{x2}\t{y2}\n")
+			# if data_json['car'] == 0 and len(self.car_positions[0]) == 2:
+			# 	x1, y1, time1 = self.car_positions[0][0]
+			# 	x2, y2, time2 = self.car_positions[0][1]
+				# print(f"lead vehicle most recent update:\n\tx:\ty:\n{time1}\t{x1}\t{y1}\n{time2}\t{x2}\t{y2}\n")
                 
 	def telem_listener_callback(self, msg):
 		"""Saves the latest telemetry message"""
