@@ -116,7 +116,7 @@ class UDPPublisher(Node):
 			y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
 
 			# Relative position in global frame
-			relative_position = np.array([-x, -y, 0])
+			relative_position = np.array([x, y, 0])
 
 			# Convert quaternion to rotation matrix
 			rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
