@@ -264,6 +264,7 @@ class UDPPublisher(Node):
 				res, targets = self.get_goal_motion()				
 
 				if not res.success:
+					print(res.message)
 					self.mission_status = ABORT
 					return
 				
