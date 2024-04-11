@@ -27,17 +27,17 @@ DISARMING = 3
 MISSIONCOMPLETE = 4
 ABORT = -1
 
-NUM_CARS = 1 # number of total cars in the network, including the ego vehicle
+NUM_CARS = 2 # number of total cars in the network, including the ego vehicle
 EARTH_RADIUS = 6371e3 # earth radius in meters
 # TODO: Tune params below
 KP = 0.5
 KD = 0.5
 K = 0.5
-BROADCAST_INTERVAL = 1
+BROADCAST_INTERVAL = 0.1
 LISTEN_INTERVAL = 0.01
 MAX_STEER = np.pi/4
-WHEELBASE = 1.0
-CAR_LENGTH = 1.0
+WHEELBASE = 0.48
+CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
 
