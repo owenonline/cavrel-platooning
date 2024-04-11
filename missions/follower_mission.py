@@ -176,7 +176,7 @@ class UDPPublisher(Node):
 
 			return total_cost
 		
-		res = minimize(minimization_objective, [1.0, 0.0])
+		res = minimize(minimization_objective, [1.0, 0.0], method='Nelder-Mead')
 
 		return res, targets
 	
