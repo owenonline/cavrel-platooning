@@ -19,7 +19,6 @@ import json
 import threading
 import numpy as np
 import math
-from geopy.distance import geodesic
 
 MISSIONSTART = 0
 ARMING = 1

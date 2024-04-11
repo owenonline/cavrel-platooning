@@ -1,3 +1,4 @@
+import struct
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import Twist, TwistStamped
@@ -38,20 +39,23 @@ MAX_STEER = np.pi/4
 WHEELBASE = 1.0
 CAR_LENGTH = 1.0
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
+DUE_EAST = 90
 
 class UDPPublisher(Node):
 	def __init__(self, car):
 		super().__init__('udp_publisher')
 
         # setup related to udp communication
-		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
-		self.broadcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-		self.broadcast_sock.bind(("", 37020))
-		self.listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		self.listen_sock.bind(("", 37020))
+		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+		ttl = struct.pack('b', 1)
+		self.broadcast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
-		interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
-		self.allips = [ip[-1][0] for ip in interfaces]
+		self.listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		self.listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		self.listen_sock.bind(('', 5004))
+		group = socket.inet_aton('224.0.0.1')
+		mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+		self.listen_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
 		self.broadcast_timer = self.create_timer(BROADCAST_INTERVAL, self.broadcast_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
 		self.listen_timer = self.create_timer(LISTEN_INTERVAL, self.listen_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
@@ -59,10 +63,15 @@ class UDPPublisher(Node):
 		self.car_positions = defaultdict(list)
 
 		# setup related to position
+		self.telem = None
 		self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.satellite = None
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		self.velocity = None
 		self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
-		
+		self.heading = None
+		self.heading_subscriber = self.create_subscription(Float64, '/mavros/global_position/compass_hdg', self.heading_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+
         # setup related to motion
 		print('setting up motion clients')
 		self.set_mode_client = self.create_client(SetMode, '/mavros/set_mode')
@@ -106,7 +115,7 @@ class UDPPublisher(Node):
 		msg = json.dumps({"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT})
 		msg = msg.encode()
 
-		self.broadcast_sock.sendto(msg, ("255.255.255.255", 37020))
+		self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
 
 	def listen_timer_callback(self):
 		"""Listens for GPS positions from other cars in the network, converts them to the local frame of the car, and stores them in a dictionary."""
@@ -114,38 +123,18 @@ class UDPPublisher(Node):
 		data, _ = self.listen_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
 
+		if self.satellite is None:
+			return
+
 		# if one of the cars failed, stop the mission immediately
 		if data_json['abort']:
 			self.mission_status = ABORT
 
 		if data_json['car'] <= self.car:
-			current_lat = self.satellite.latitude
-			current_lon = self.satellite.longitude
-			current_xyz = np.array([self.telem.pose.pose.position.x, self.telem.pose.pose.position.y, 0])
-			current_quaternion = np.array([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, 0, self.telem.pose.pose.orientation.w])
-
-			# Convert lat, lon to radians
-			target_lat_rad, target_lon_rad = math.radians(data_json['lat']), math.radians(data_json['lon'])
-			current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
-
-			# Equirectangular projection
-			x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
-			y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
-
-			# Relative position in global frame
-			relative_position = np.array([x, y, 0])
-
-			# Convert quaternion to rotation matrix
-			rotation_matrix = Rotation.from_quat(current_quaternion).as_matrix()
-
-			# Rotate relative position into local frame
-			local_position = rotation_matrix @ relative_position
-
-			local_position_translated = local_position + np.array(current_xyz)
-
-			position_update = local_position_translated[:2] + [data_json['time']] # only store x, y, and time of transmission
+			# save the last two positions of the car
+			position_update = (data_json['lat'], data_json['lon'], data_json['time'])
 			self.car_positions[data_json['car']].append(position_update)
-			self.car_positions[data_json['car']] = self.car_positions[data_json['car']].copy()[-2:] # only store the last 2 positions
+			self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-2:] # only store the last 2 positions
 
 	def telem_listener_callback(self, msg):
 		"""Saves the latest telemetry message"""
@@ -159,10 +148,17 @@ class UDPPublisher(Node):
 		"""Saves the latest velocity message"""
 		self.velocity = msg
 
+	def heading_listener_callback(self, msg):
+		"""Saves the latest heading message"""
+		self.heading = msg
+
 	def get_goal_motion(self):
 		targets = []
 		for i in range(self.car - 1, -1, -1):
-			(x1, y1, time1), (x2, y2, time2) = self.car_positions[i]
+			(lat1, lon1, time1), (lat2, lon2, time2) = self.car_positions[i]
+
+			x1, y1 = self.coords_to_local(lat1, lon1)
+			x2, y2 = self.coords_to_local(lat2, lon2)
 
 			velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
 			heading = np.arctan2(y2 - y1, x2 - x1)
@@ -184,6 +180,22 @@ class UDPPublisher(Node):
 
 		return res, targets
 	
+	def coords_to_local(self, target_lat, target_lon):
+		current_lat = self.satellite.latitude
+		current_lon = self.satellite.longitude
+
+		# Convert lat, lon to radians
+		target_lat_rad, target_lon_rad = math.radians(target_lat), math.radians(target_lon)
+		current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
+
+		x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
+		y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
+
+		angle = math.radians(self.heading.data - DUE_EAST)
+		qx = math.cos(angle) * x - math.sin(angle) * y
+		qy = math.sin(angle) * x + math.cos(angle) * y
+		return qx, qy
+	
 	def pd_controller(self, v, v_ego):
 		accel = KP*(v - v_ego) + KD*(v - v_ego)/BROADCAST_INTERVAL
 		return accel
@@ -191,6 +203,7 @@ class UDPPublisher(Node):
 	def stanley_controller(self, x_ego, y_ego, head_ego, v_ego, head, target_x, target_y):
 		e = abs((x_ego - target_x) * np.sin(head) - (y_ego - target_y) * np.cos(head))
 		steer = np.arctan2(K*e/v_ego)+(head_ego - head)
+		return steer
 
 	def mission_timer_callback(self):
 		"""Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
@@ -228,7 +241,7 @@ class UDPPublisher(Node):
 		if self.mission_status == MOVING:
 			msg = Twist()
 
-			if time() - self.start_time > 5:
+			if time() - self.start_time > 20:
 				print("...stopped, disarming")
 				msg.linear.x = 0.0
 				msg.linear.y = 0.0
@@ -256,10 +269,14 @@ class UDPPublisher(Node):
 				
 				v, head = res.x
 
+				print(f"Minimization outcome: velocity = {v}, heading = {head}")
+
 				# get the motion of the ego vehicle
 				v_ego = np.sqrt(self.velocity.twist.linear.x**2 + self.velocity.twist.linear.y**2)
-				_, _, head_ego = tf_transformations.euler_from_quaternion([self.telem.pose.pose.orientation.x, self.telem.pose.pose.orientation.y, self.telem.pose.pose.orientation.z, self.telem.pose.pose.orientation.w])
+				head_ego = math.radians(self.heading.data)
 				x_ego, y_ego = self.telem.pose.pose.position.x, self.telem.pose.pose.position.y
+
+				print(f"Ego vehicle: x = {x_ego}, y = {y_ego}, heading = {math.degrees(head_ego)}, velocity = {v_ego}")
 
 				# update velocity and yaw
 				accel = self.pd_controller(v, v_ego)
@@ -268,16 +285,19 @@ class UDPPublisher(Node):
 				head_ego += v_ego/WHEELBASE*np.tan(steer)*BROADCAST_INTERVAL
 				v_ego += accel*BROADCAST_INTERVAL
 
+				print(f"Control: acceleration = {accel}, steering = {steer}, updated velocity = {v_ego}, updated heading = {math.degrees(head_ego)}")
+				print(f"Control message: linear.x = {v_ego*np.cos(head_ego)}, linear.y = {v_ego*np.sin(head_ego)}")
+
 				# send updated control message
-				msg.linear.x = v_ego*np.cos(head_ego)
-				msg.linear.y = v_ego*np.sin(head_ego)
-				msg.linear.z = 0.0
+				# msg.linear.x = v_ego*np.cos(head_ego)
+				# msg.linear.y = v_ego*np.sin(head_ego)
+				# msg.linear.z = 0.0
 
-				msg.angular.x = 0.0
-				msg.angular.y = 0.0
-				msg.angular.z = 0.0
+				# msg.angular.x = 0.0
+				# msg.angular.y = 0.0
+				# msg.angular.z = 0.0
 
-				self.publisher.publish(msg)
+				# self.publisher.publish(msg)
 			return
 		
 		if self.mission_status == DISARMING:
