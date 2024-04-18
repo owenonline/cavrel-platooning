@@ -30,10 +30,12 @@ ABORT = -1
 NUM_CARS = 2 # number of total cars in the network, including the ego vehicle
 EARTH_RADIUS = 6371e3 # earth radius in meters
 # TODO: Tune params below
-KP = 0.5
-KD = 0.5
+KPV = 0.5
+KDV = 0.5
+KPH = 0.5
+KDH = 0.5
 K = 0.5
-BROADCAST_INTERVAL = 0.1
+BROADCAST_INTERVAL = 0.1 # same for all cars
 LISTEN_INTERVAL = 0.01
 MAX_STEER = np.pi/4
 WHEELBASE = 0.48
@@ -123,16 +125,13 @@ class UDPPublisher(Node):
 		data, _ = self.listen_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
 
-		if self.satellite is None:
-			return
-
 		# if one of the cars failed, stop the mission immediately
 		if data_json['abort']:
 			self.mission_status = ABORT
 
 		if data_json['car'] <= self.car:
 			# save the last two positions of the car
-			position_update = (data_json['lat'], data_json['lon'], data_json['time'])
+			position_update = (data_json['lat'], data_json['lon'], data_json['head'], data_json['time'])
 			self.car_positions[data_json['car']].append(position_update)
 			self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-2:] # only store the last 2 positions
 
@@ -155,13 +154,13 @@ class UDPPublisher(Node):
 	def get_goal_motion(self):
 		targets = []
 		for i in range(self.car - 1, -1, -1):
-			(lat1, lon1, time1), (lat2, lon2, time2) = self.car_positions[i]
+			(lat1, lon1, head1, time1), (lat2, lon2, head2, time2) = self.car_positions[i]
 
 			x1, y1 = self.coords_to_local(lat1, lon1)
 			x2, y2 = self.coords_to_local(lat2, lon2)
 
 			velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
-			heading = np.arctan2(y2 - y1, x2 - x1)
+			heading = head2#np.arctan2(y2 - y1, x2 - x1)
 			targets.append((x2, y2, heading, velocity, self.car - 1 - i))
 
 		def minimization_objective(params):
@@ -172,7 +171,7 @@ class UDPPublisher(Node):
 			for target in targets:
 				x_target, y_target, head_target, v_target, position = target
 				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
-				total_cost += np.abs(goal_follow_distance - np.sqrt((x_target + v_target*np.cos(head_target) - x - v*np.cos(head))**2 + (y_target + v_target*np.sin(head_target) - y - v*np.sin(head))**2))
+				total_cost += np.abs(goal_follow_distance - np.sqrt((x_target + v_target*np.cos(head_target)*BROADCAST_INTERVAL - x - v*np.cos(head)*BROADCAST_INTERVAL)**2 + (y_target + v_target*np.sin(head_target)*BROADCAST_INTERVAL - y - v*np.sin(head)*BROADCAST_INTERVAL)**2))
 
 			return total_cost
 		
@@ -196,13 +195,12 @@ class UDPPublisher(Node):
 		qy = math.sin(angle) * x + math.cos(angle) * y
 		return qx, qy
 	
-	def pd_controller(self, v, v_ego):
-		accel = KP*(v - v_ego) + KD*(v - v_ego)/BROADCAST_INTERVAL
+	def velocity_controller(self, v, v_ego):
+		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/BROADCAST_INTERVAL
 		return accel
 	
-	def stanley_controller(self, x_ego, y_ego, head_ego, v_ego, head, target_x, target_y):
-		e = abs((x_ego - target_x) * np.sin(head) - (y_ego - target_y) * np.cos(head))
-		steer = np.arctan2(K*e/v_ego)+(head_ego - head)
+	def heading_controller(self, h, h_ego):
+		steer = KPH*(h - h_ego) + KDH*(h - h_ego)/BROADCAST_INTERVAL
 		return steer
 
 	def mission_timer_callback(self):
@@ -270,21 +268,19 @@ class UDPPublisher(Node):
 				
 				v, head = res.x
 
-				print(f"Minimization outcome: velocity = {v}, heading = {head}")
+				print(f"Minimization outcome: velocity = {v}, heading = {math.degrees(head)}")
 
 				# get the motion of the ego vehicle
 				v_ego = np.sqrt(self.velocity.twist.linear.x**2 + self.velocity.twist.linear.y**2)
 				head_ego = math.radians(self.heading.data)
-				x_ego, y_ego = self.telem.pose.pose.position.x, self.telem.pose.pose.position.y
+				# x_ego, y_ego = self.telem.pose.pose.position.x, self.telem.pose.pose.position.y
 
-				print(f"Ego vehicle: x = {x_ego}, y = {y_ego}, heading = {math.degrees(head_ego)}, velocity = {v_ego}")
+				# print(f"Ego vehicle: x = {x_ego}, y = {y_ego}, heading = {math.degrees(head_ego)}, velocity = {v_ego}")
 
 				# update velocity and yaw
-				accel = self.pd_controller(v, v_ego)
-				steer = self.stanley_controller(x_ego, y_ego, head_ego, v_ego, head, targets[0][0], targets[0][1])
-				steer = np.clip(steer, -MAX_STEER, MAX_STEER)
-				head_ego += v_ego/WHEELBASE*np.tan(steer)*BROADCAST_INTERVAL
-				v_ego += accel*BROADCAST_INTERVAL
+				vel_accel = self.velocity_controller(v, v_ego)
+				steer_accel = self.heading_controller(head, head_ego)
+				
 
 				print(f"Control: acceleration = {accel}, steering = {steer}, updated velocity = {v_ego}, updated heading = {math.degrees(head_ego)}")
 				print(f"Control message: linear.x = {v_ego*np.cos(head_ego)}, linear.y = {v_ego*np.sin(head_ego)}")
