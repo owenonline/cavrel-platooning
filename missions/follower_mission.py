@@ -74,8 +74,8 @@ class UDPPublisher(Node):
 		self.telem_subscription = self.create_subscription(Odometry, '/mavros/global_position/local', self.telem_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.satellite = None
 		self.satellite_subscriber = self.create_subscription(NavSatFix, '/mavros/global_position/global', self.satellite_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
-		self.velocity = None
-		self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
+		# self.velocity = None
+		# self.velocity_subscriber = self.create_subscription(TwistStamped, '/mavros/global_position/gp_vel', self.velocity_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 		self.heading = None
 		self.heading_subscriber = self.create_subscription(Float64, '/mavros/global_position/compass_hdg', self.heading_listener_callback, QoSPresetProfiles.SENSOR_DATA.value, callback_group=MutuallyExclusiveCallbackGroup())
 
@@ -150,9 +150,9 @@ class UDPPublisher(Node):
 		"""Saves the latest GPS message"""
 		self.satellite = msg
 
-	def velocity_listener_callback(self, msg):
-		"""Saves the latest velocity message"""
-		self.velocity = msg
+	# def velocity_listener_callback(self, msg):
+	# 	"""Saves the latest velocity message"""
+	# 	self.velocity = msg
 
 	def heading_listener_callback(self, msg):
 		"""Saves the latest heading message"""
@@ -335,7 +335,7 @@ class UDPPublisher(Node):
 				print(f"Minimization outcome: velocity = {v}, heading = {math.degrees(head)}")
 
 				# get the motion of the ego vehicle
-				v_ego = np.sqrt(self.velocity.twist.linear.x**2 + self.velocity.twist.linear.y**2)
+				v_ego = np.sqrt(self.telem.twist.linear.x**2 + self.telem.twist.linear.y**2)
 				head_ego = math.radians(self.heading.data)
 				
 				vel_accel = self.velocity_controller(v, v_ego)
