@@ -119,7 +119,7 @@ class UDPPublisher(Node):
 			return
 
 		# velocity_mag = np.sqrt(self.velocity.twist.linear.x**2 + self.velocity.twist.linear.y**2)
-		msg = json.dumps({"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT})
+		msg = json.dumps({"head": self.heading.data,"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT})
 		msg = msg.encode()
 
 		self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
