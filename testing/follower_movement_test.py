@@ -135,18 +135,36 @@ class UDPPublisher(Node):
 		if self.mission_status == MOVING:
 			msg = Twist()
 
-			new_heading = np.radians(self.headset)
-			old_heading = np.radians(self.heading.data)
+			if time() - self.start_time > 3:
+				print("...stopped, disarming")
+				msg.linear.x = 0.0
+				msg.linear.y = 0.0
+				msg.linear.z = 0.0
 
-			msg.linear.x = self.vset * math.cos(new_heading)
-			msg.linear.y = self.vset * math.sin(new_heading)
-			msg.linear.z = 0.0
-			msg.angular.x = 0.0
-			msg.angular.y = 0.0
-			msg.angular.z = (new_heading - old_heading) / BROADCAST_INTERVAL
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.0
+				
+				self.publisher.publish(msg)
 
-			print(msg)
-			self.publisher.publish(msg)
+				disarm_req = CommandBool.Request()
+				disarm_req.value = False
+				disarm_future = self.arming_client.call_async(disarm_req)
+				disarm_future.add_done_callback(self.disarm_callback)
+
+				self.mission_status = DISARMING
+			else:
+				heading = np.radians(self.heading.data)
+
+				msg.linear.x = 0.1 * math.cos(heading)
+				msg.linear.y = 0.1 * math.sin(heading)
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.0
+
+				print(msg)
+				self.publisher.publish(msg)
 			return
 		
 		if self.mission_status == DISARMING:
