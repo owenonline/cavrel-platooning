@@ -79,7 +79,7 @@ class UDPPublisher(Node):
 
 		# setup mission state
 		self.vset = 0
-		self.headset = 360
+		self.headset = 336
 		self.mission_status = MISSIONSTART
 
 	def heading_listener_callback(self, msg):
@@ -145,6 +145,7 @@ class UDPPublisher(Node):
 			msg.angular.y = 0.0
 			msg.angular.z = (new_heading - old_heading) / BROADCAST_INTERVAL
 
+			print(msg)
 			self.publisher.publish(msg)
 			return
 		
