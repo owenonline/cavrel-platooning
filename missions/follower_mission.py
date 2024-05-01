@@ -130,6 +130,8 @@ class UDPPublisher(Node):
 		data, _ = self.listen_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
 
+		print(f"Received data: {data_json}")
+
 		# if one of the cars failed, stop the mission immediately
 		if data_json['abort']:
 			self.mission_status = ABORT
