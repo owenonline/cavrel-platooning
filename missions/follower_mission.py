@@ -96,6 +96,8 @@ class UDPPublisher(Node):
 		self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
 		self.mission_timer = self.create_timer(LISTEN_INTERVAL, self.mission_timer_callback)
 
+		self.log_handle = open(f"car{car}_log.txt", "w")
+
 		# setup kill switch
 		self.stop_thread = threading.Thread(target=self.listen_for_stop)
 		self.stop_thread.daemon = True
@@ -130,7 +132,7 @@ class UDPPublisher(Node):
 		data, _ = self.listen_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
 
-		print(f"Received data: {data_json}")
+		self.log_handle.write(f"Received data: {data_json}\n")
 
 		# if one of the cars failed, stop the mission immediately
 		if data_json['abort']:
@@ -332,7 +334,7 @@ class UDPPublisher(Node):
 				
 				v, head = res.x
 
-				print(f"Minimization outcome: velocity = {v}, heading = {head}")
+				self.log_handle.write(f"Minimization outcome: velocity = {v}, heading = {head}\n")
 
 				# get the motion of the ego vehicle
 				v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
@@ -344,7 +346,7 @@ class UDPPublisher(Node):
 				new_speed = v_ego + vel_accel*LISTEN_INTERVAL
 				new_speed = min(new_speed, SPEED_LIMIT)
 
-				print(f"Limited speed to {new_speed} m/s")
+				self.log_handle.writeprint(f"Limited speed to {new_speed} m/s\n")
 
 				msg.linear.x = new_speed * math.cos(new_heading)
 				msg.linear.y = new_speed * math.sin(new_heading)
