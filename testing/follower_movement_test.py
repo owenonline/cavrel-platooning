@@ -49,7 +49,7 @@ center_longitude = (-81.195662 + -81.194750) / 2
 center_orientation = DUE_EAST
 
 class UDPPublisher(Node):
-	def __init__(self, car):
+	def __init__(self, speed):
 		super().__init__('udp_publisher')
 
         # setup related to motion
@@ -78,8 +78,8 @@ class UDPPublisher(Node):
 		self.stop_thread.start()
 
 		# setup mission state
-		self.vset = 0
-		self.headset = 336
+		self.vset = speed
+
 		self.mission_status = MISSIONSTART
 
 	def heading_listener_callback(self, msg):
@@ -156,8 +156,8 @@ class UDPPublisher(Node):
 			else:
 				heading = np.radians(self.heading.data)
 
-				msg.linear.x = 0.1 * math.cos(heading)
-				msg.linear.y = 0.1 * math.sin(heading)
+				msg.linear.x = self.vset
+				msg.linear.y = 0.0
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
