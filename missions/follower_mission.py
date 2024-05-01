@@ -12,7 +12,9 @@ from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
 import tf_transformations # TODO: make sure this is installed on the cars
 from collections import defaultdict
 from scipy.spatial.transform import Rotation
-from scipy.optimize import minimize
+from scipy.optimize import minimize, least_squares, Bounds
+from scipy.stats import linregress
+import pyproj
 import socket
 from time import sleep, time
 import json
@@ -30,18 +32,21 @@ ABORT = -1
 NUM_CARS = 2 # number of total cars in the network, including the ego vehicle
 EARTH_RADIUS = 6371e3 # earth radius in meters
 # TODO: Tune params below
-KPV = 0.5
+KPV = 0.3
 KDV = 0.5
-KPH = 0.5
-KDH = 0.5
 K = 0.5
 BROADCAST_INTERVAL = 0.1 # same for all cars
 LISTEN_INTERVAL = 0.01
-MAX_STEER = np.pi/4
+MAX_STEER = 30
 WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
+SPEED_LIMIT = 1
+geodesic = pyproj.Geod(ellps='WGS84')
+center_latitude = (28.607980 + 28.607292) / 2
+center_longitude = (-81.195662 + -81.194750) / 2
+center_orientation = DUE_EAST
 
 class UDPPublisher(Node):
 	def __init__(self, car):
@@ -89,7 +94,7 @@ class UDPPublisher(Node):
 			print('killswitch service not available, waiting again...')
 
 		self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
-		self.mission_timer = self.create_timer(0.1, self.mission_timer_callback)
+		self.mission_timer = self.create_timer(LISTEN_INTERVAL, self.mission_timer_callback)
 
 		# setup kill switch
 		self.stop_thread = threading.Thread(target=self.listen_for_stop)
@@ -153,54 +158,111 @@ class UDPPublisher(Node):
 
 	def get_goal_motion(self):
 		targets = []
-		for i in range(self.car - 1, -1, -1):
+		for i in range(self.car):
 			(lat1, lon1, head1, time1), (lat2, lon2, head2, time2) = self.car_positions[i]
 
 			x1, y1 = self.coords_to_local(lat1, lon1)
 			x2, y2 = self.coords_to_local(lat2, lon2)
 
 			velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
-			heading = head2#np.arctan2(y2 - y1, x2 - x1)
-			targets.append((x2, y2, heading, velocity, self.car - 1 - i))
+			heading = head2
+			targets.append((x2, y2, heading, velocity, self.car - i))
 
 		def minimization_objective(params):
 			v, head = params
-			x, y = self.telem.pose.pose.position.x, self.telem.pose.pose.position.y
+			head = np.radians(head)
+			x, y = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
 
 			total_cost = 0
 			for target in targets:
 				x_target, y_target, head_target, v_target, position = target
+				head_target = np.radians(head_target)
 				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
-				total_cost += np.abs(goal_follow_distance - np.sqrt((x_target + v_target*np.cos(head_target)*BROADCAST_INTERVAL - x - v*np.cos(head)*BROADCAST_INTERVAL)**2 + (y_target + v_target*np.sin(head_target)*BROADCAST_INTERVAL - y - v*np.sin(head)*BROADCAST_INTERVAL)**2))
+
+				# simulate the motion of the cars
+				x_sim_target = x_target + v_target*np.sin(head_target)*LISTEN_INTERVAL
+				y_sim_target = y_target + v_target*np.cos(head_target)*LISTEN_INTERVAL
+				x_sim_ego = x + v*np.sin(head)*LISTEN_INTERVAL
+				y_sim_ego = y + v*np.cos(head)*LISTEN_INTERVAL
+
+				# determine the point where the following car *should* be to be perfectly maintaining its following distance
+				x_goal = x_sim_target - goal_follow_distance*np.sin(head_target)
+				y_goal = y_sim_target - goal_follow_distance*np.cos(head_target)
+
+				# the cost is the distance between the actual simulated position of the following car and the ideal position
+				total_cost += np.sqrt((x_goal - x_sim_ego)**2 + (y_goal - y_sim_ego)**2)
 
 			return total_cost
 		
-		res = minimize(minimization_objective, [1.0, 0.0], method='Nelder-Mead')
+		bounds = Bounds([0, -360], [10, 360])
+		_, _, head, v, _ = targets[0]
+		
+		res = minimize(minimization_objective, [v, head], method='SLSQP', bounds=bounds)
 
-		return res, targets
+		return res
 	
-	def coords_to_local(self, target_lat, target_lon):
-		current_lat = self.satellite.latitude
-		current_lon = self.satellite.longitude
-
+	def coords_to_local(target_lat, target_lon):
 		# Convert lat, lon to radians
 		target_lat_rad, target_lon_rad = math.radians(target_lat), math.radians(target_lon)
-		current_lat_rad, current_lon_rad = math.radians(current_lat), math.radians(current_lon)
+		current_lat_rad, current_lon_rad = math.radians(center_latitude), math.radians(center_longitude)
 
 		x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
 		y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
 
-		angle = math.radians(self.heading.data - DUE_EAST)
+		angle = math.radians(center_orientation - DUE_EAST)
 		qx = math.cos(angle) * x - math.sin(angle) * y
 		qy = math.sin(angle) * x + math.cos(angle) * y
 		return qx, qy
 	
-	def velocity_controller(self, v, v_ego):
-		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/BROADCAST_INTERVAL
+	def velocity_controller(v, v_ego):
+		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/LISTEN_INTERVAL
 		return accel
 	
-	def heading_controller(self, h, h_ego):
-		steer = KPH*(h - h_ego) + KDH*(h - h_ego)/BROADCAST_INTERVAL
+	def distance_to_line(self, x0, y0, dx, dy, x, y):
+		lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
+		closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
+		distance = np.linalg.norm(closest_point - np.array([x, y]))
+		return distance, closest_point
+	
+	def heading_controller(self, head_ego, v_ego, target_head):
+		"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
+		points = []
+
+		# get the local coordinates of the last two locations of all other cars
+		for i in range(self.car):
+			(lat1, lon1, _, _), (lat2, lon2, _, _) = self.car_positions[i]
+			x1, y1 = self.coords_to_local(lat1, lon1)
+			x2, y2 = self.coords_to_local(lat2, lon2)
+			points.append((x1, y1))
+			points.append((x2, y2))
+
+		# get the local coordinates of the ego car
+		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
+		ex1, ey1 = self.coords_to_local(lat1, lon1)
+
+		def distances_to_line(params, points):
+			x0, y0, dx, dy = params
+			distances = []
+			for (x, y) in points:
+				distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
+				distances.append(distance)
+			return distances
+		
+		# compute a line of best fit using the last 2 positions of all other cars
+		# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
+		# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
+		initial_guess = [1, 1, 1, 1]
+		result = least_squares(distances_to_line, initial_guess, args=(points,))
+
+		x0_opt, y0_opt, dx_opt, dy_opt = result.x
+		heading_diff = target_head - head_ego
+
+		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
+		cte = np.arctan2(K*dist, v_ego)
+
+		# print(f"CTE: {cte}, heading diff: {heading_diff}")
+
+		steer = heading_diff + cte
 		return steer
 
 	def mission_timer_callback(self):
@@ -259,7 +321,7 @@ class UDPPublisher(Node):
 				self.mission_status = DISARMING
 			else:
 				# get the position, heading, and velocity for each preceding vehicle, then minimize to get the target speed and heading
-				res, targets = self.get_goal_motion()				
+				res = self.get_goal_motion()				
 
 				if not res.success:
 					print(res.message)
@@ -273,28 +335,21 @@ class UDPPublisher(Node):
 				# get the motion of the ego vehicle
 				v_ego = np.sqrt(self.velocity.twist.linear.x**2 + self.velocity.twist.linear.y**2)
 				head_ego = math.radians(self.heading.data)
-				# x_ego, y_ego = self.telem.pose.pose.position.x, self.telem.pose.pose.position.y
-
-				# print(f"Ego vehicle: x = {x_ego}, y = {y_ego}, heading = {math.degrees(head_ego)}, velocity = {v_ego}")
-
-				# update velocity and yaw
-				vel_accel = self.velocity_controller(v, v_ego)
-				steer_accel = self.heading_controller(head, head_ego)
 				
+				vel_accel = self.velocity_controller(v, v_ego)
+				delta = self.heading_controller(head_ego, v_ego, head)
+				new_heading = head_ego + delta
+				new_speed = v_ego + vel_accel*LISTEN_INTERVAL
+				new_speed = min(new_speed, SPEED_LIMIT)
 
-				print(f"Control: acceleration = {accel}, steering = {steer}, updated velocity = {v_ego}, updated heading = {math.degrees(head_ego)}")
-				print(f"Control message: linear.x = {v_ego*np.cos(head_ego)}, linear.y = {v_ego*np.sin(head_ego)}")
+				msg.linear.x = new_speed * math.cos(new_heading)
+				msg.linear.y = new_speed * math.sin(new_heading)
+				msg.linear.z = 0
+				msg.angular.x = 0
+				msg.angular.y = 0
+				msg.angular.z = (new_heading - head_ego) / BROADCAST_INTERVAL
 
-				# send updated control message
-				# msg.linear.x = v_ego*np.cos(head_ego)
-				# msg.linear.y = v_ego*np.sin(head_ego)
-				# msg.linear.z = 0.0
-
-				# msg.angular.x = 0.0
-				# msg.angular.y = 0.0
-				# msg.angular.z = 0.0
-
-				# self.publisher.publish(msg)
+				self.publisher.publish(msg)
 			return
 		
 		if self.mission_status == DISARMING:
