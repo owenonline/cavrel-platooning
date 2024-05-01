@@ -89,16 +89,10 @@ class UDPPublisher(Node):
 	def listen_for_stop(self):
 		"""Listens for a KILL command from the user to abort the mission immediately."""
 		while True:
-			command = input().split()
-			if command[0] == 'k':
+			command = input()
+			if command == 'k':
 				self.mission_status = ABORT
-			elif command[0] == 'v':
-				self.vset = float(command[1])
-			elif command[0] == 'h':
-				self.headset = float(command[1])
-			elif command[0] == 'p':
-				print(f"heading: {self.heading.data}")
-
+			
 	def mission_timer_callback(self):
 		"""Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
 
@@ -154,8 +148,6 @@ class UDPPublisher(Node):
 
 				self.mission_status = DISARMING
 			else:
-				heading = np.radians(self.heading.data)
-
 				msg.linear.x = self.vset
 				msg.linear.y = 0.0
 				msg.linear.z = 0.0
