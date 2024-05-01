@@ -42,7 +42,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 1
+SPEED_LIMIT = 0.1
 geodesic = pyproj.Geod(ellps='WGS84')
 center_latitude = (28.607980 + 28.607292) / 2
 center_longitude = (-81.195662 + -81.194750) / 2
@@ -343,6 +343,8 @@ class UDPPublisher(Node):
 				new_heading = head_ego + delta
 				new_speed = v_ego + vel_accel*LISTEN_INTERVAL
 				new_speed = min(new_speed, SPEED_LIMIT)
+
+				print(f"Limited speed to {new_speed} m/s")
 
 				msg.linear.x = new_speed * math.cos(new_heading)
 				msg.linear.y = new_speed * math.sin(new_heading)
