@@ -338,7 +338,7 @@ class UDPPublisher(Node):
 
 			# get the motion of the ego vehicle
 			v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
-			head_ego = math.radians(self.heading.data)
+			head_ego = self.heading.data
 			
 			vel_accel = self.velocity_controller(v, v_ego)
 			delta = self.heading_controller(head_ego, v_ego, head)
@@ -347,6 +347,9 @@ class UDPPublisher(Node):
 			new_speed = min(new_speed, SPEED_LIMIT)
 
 			print(f"setting speed {new_speed} m/s and heading {new_heading}\n")
+
+			new_heading = np.radians(new_heading)
+			head_ego = np.radians(head_ego)
 
 			msg.linear.x = new_speed * math.cos(new_heading)
 			msg.linear.y = new_speed * math.sin(new_heading)
