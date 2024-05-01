@@ -346,9 +346,9 @@ class UDPPublisher(Node):
 
 				msg.linear.x = new_speed * math.cos(new_heading)
 				msg.linear.y = new_speed * math.sin(new_heading)
-				msg.linear.z = 0
-				msg.angular.x = 0
-				msg.angular.y = 0
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
 				msg.angular.z = (new_heading - head_ego) / BROADCAST_INTERVAL
 
 				self.publisher.publish(msg)
