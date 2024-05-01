@@ -203,7 +203,7 @@ class UDPPublisher(Node):
 
 		return res
 	
-	def coords_to_local(target_lat, target_lon):
+	def coords_to_local(self, target_lat, target_lon):
 		# Convert lat, lon to radians
 		target_lat_rad, target_lon_rad = math.radians(target_lat), math.radians(target_lon)
 		current_lat_rad, current_lon_rad = math.radians(center_latitude), math.radians(center_longitude)
