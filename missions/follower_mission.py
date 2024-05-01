@@ -335,7 +335,7 @@ class UDPPublisher(Node):
 				print(f"Minimization outcome: velocity = {v}, heading = {math.degrees(head)}")
 
 				# get the motion of the ego vehicle
-				v_ego = np.sqrt(self.telem.twist.linear.x**2 + self.telem.twist.linear.y**2)
+				v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
 				head_ego = math.radians(self.heading.data)
 				
 				vel_accel = self.velocity_controller(v, v_ego)
