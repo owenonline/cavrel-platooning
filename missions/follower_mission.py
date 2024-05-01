@@ -346,7 +346,7 @@ class UDPPublisher(Node):
 				new_speed = v_ego + vel_accel*LISTEN_INTERVAL
 				new_speed = min(new_speed, SPEED_LIMIT)
 
-				self.log_handle.writeprint(f"Limited speed to {new_speed} m/s\n")
+				self.log_handle.write(f"Limited speed to {new_speed} m/s\n")
 
 				msg.linear.x = new_speed * math.cos(new_heading)
 				msg.linear.y = new_speed * math.sin(new_heading)
