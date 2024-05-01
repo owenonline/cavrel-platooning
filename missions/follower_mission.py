@@ -216,7 +216,7 @@ class UDPPublisher(Node):
 		qy = math.sin(angle) * x + math.cos(angle) * y
 		return qx, qy
 	
-	def velocity_controller(v, v_ego):
+	def velocity_controller(self, v, v_ego):
 		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/LISTEN_INTERVAL
 		return accel
 	
@@ -332,7 +332,7 @@ class UDPPublisher(Node):
 				
 				v, head = res.x
 
-				print(f"Minimization outcome: velocity = {v}, heading = {math.degrees(head)}")
+				print(f"Minimization outcome: velocity = {v}, heading = {head}")
 
 				# get the motion of the ego vehicle
 				v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
