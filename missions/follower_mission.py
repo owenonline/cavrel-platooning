@@ -110,7 +110,7 @@ class UDPPublisher(Node):
 		"""Listens for a KILL command from the user to abort the mission immediately."""
 		while True:
 			command = input()
-			if command.upper() == 'KILL':
+			if command.upper() == 'K':
 				self.mission_status = ABORT
 
 	def broadcast_timer_callback(self):
