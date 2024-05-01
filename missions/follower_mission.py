@@ -358,6 +358,8 @@ class UDPPublisher(Node):
 			msg.angular.y = 0.0
 			msg.angular.z = (new_heading - head_ego) / BROADCAST_INTERVAL
 
+			print(msg.linear.x, msg.linear.y, msg.angular.z)
+
 			self.publisher.publish(msg)
 			return
 		
