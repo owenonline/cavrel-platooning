@@ -305,57 +305,57 @@ class UDPPublisher(Node):
 		if self.mission_status == MOVING:
 			msg = Twist()
 
-			if time() - self.start_time > 20:
-				print("...stopped, disarming")
-				msg.linear.x = 0.0
-				msg.linear.y = 0.0
-				msg.linear.z = 0.0
+			# if time() - self.start_time > 20:
+			# 	print("...stopped, disarming")
+			# 	msg.linear.x = 0.0
+			# 	msg.linear.y = 0.0
+			# 	msg.linear.z = 0.0
 
-				msg.angular.x = 0.0
-				msg.angular.y = 0.0
-				msg.angular.z = 0.0
+			# 	msg.angular.x = 0.0
+			# 	msg.angular.y = 0.0
+			# 	msg.angular.z = 0.0
 				
-				self.publisher.publish(msg)
+			# 	self.publisher.publish(msg)
 
-				disarm_req = CommandBool.Request()
-				disarm_req.value = False
-				disarm_future = self.arming_client.call_async(disarm_req)
-				disarm_future.add_done_callback(self.disarm_callback)
+			# 	disarm_req = CommandBool.Request()
+			# 	disarm_req.value = False
+			# 	disarm_future = self.arming_client.call_async(disarm_req)
+			# 	disarm_future.add_done_callback(self.disarm_callback)
 
-				self.mission_status = DISARMING
-			else:
-				# get the position, heading, and velocity for each preceding vehicle, then minimize to get the target speed and heading
-				res = self.get_goal_motion()				
+			# 	self.mission_status = DISARMING
+			# else:
+			# get the position, heading, and velocity for each preceding vehicle, then minimize to get the target speed and heading
+			res = self.get_goal_motion()				
 
-				if not res.success:
-					print(res.message)
-					self.mission_status = ABORT
-					return
-				
-				v, head = res.x
+			if not res.success:
+				print(res.message)
+				self.mission_status = ABORT
+				return
+			
+			v, head = res.x
 
-				self.log_handle.write(f"Minimization outcome: velocity = {v}, heading = {head}\n")
+			self.log_handle.write(f"Minimization outcome: velocity = {v}, heading = {head}\n")
 
-				# get the motion of the ego vehicle
-				v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
-				head_ego = math.radians(self.heading.data)
-				
-				vel_accel = self.velocity_controller(v, v_ego)
-				delta = self.heading_controller(head_ego, v_ego, head)
-				new_heading = head_ego + delta
-				new_speed = v_ego + vel_accel*LISTEN_INTERVAL
-				new_speed = min(new_speed, SPEED_LIMIT)
+			# get the motion of the ego vehicle
+			v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
+			head_ego = math.radians(self.heading.data)
+			
+			vel_accel = self.velocity_controller(v, v_ego)
+			delta = self.heading_controller(head_ego, v_ego, head)
+			new_heading = head_ego + delta
+			new_speed = v_ego + vel_accel*LISTEN_INTERVAL
+			new_speed = min(new_speed, SPEED_LIMIT)
 
-				self.log_handle.write(f"Limited speed to {new_speed} m/s\n")
+			self.log_handle.write(f"setting speed {new_speed} m/s and heading {new_heading}\n")
 
-				msg.linear.x = new_speed * math.cos(new_heading)
-				msg.linear.y = new_speed * math.sin(new_heading)
-				msg.linear.z = 0.0
-				msg.angular.x = 0.0
-				msg.angular.y = 0.0
-				msg.angular.z = (new_heading - head_ego) / BROADCAST_INTERVAL
+			msg.linear.x = new_speed * math.cos(new_heading)
+			msg.linear.y = new_speed * math.sin(new_heading)
+			msg.linear.z = 0.0
+			msg.angular.x = 0.0
+			msg.angular.y = 0.0
+			msg.angular.z = (new_heading - head_ego) / BROADCAST_INTERVAL
 
-				self.publisher.publish(msg)
+			self.publisher.publish(msg)
 			return
 		
 		if self.mission_status == DISARMING:
@@ -372,8 +372,10 @@ class UDPPublisher(Node):
 			return
 	
 		if self.mission_status == MISSIONCOMPLETE:
-			print("mission complete")
-			return
+			print("MISSION COMPLETE")
+			self.log_handle.close()
+			self.destroy_node()
+			rclpy.shutdown()
 		
 		# if the mission is aborted, turn off all motors immediately.
 		if self.mission_status == ABORT:
