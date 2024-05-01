@@ -223,7 +223,7 @@ class UDPPublisher(Node):
 		self.mission_status = MISSIONCOMPLETE
 
 rclpy.init(args=None)
-udp_publisher = UDPPublisher(int(input()))
+udp_publisher = UDPPublisher(float(input()))
 executor = MultiThreadedExecutor()
 executor.add_node(udp_publisher)
 executor.spin()
