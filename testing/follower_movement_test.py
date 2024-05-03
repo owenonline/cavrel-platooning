@@ -146,7 +146,7 @@ class UDPPublisher(Node):
 
 				angle = np.radians(345)
 
-				msg.linear.x = speed * np.sin(angle)
+				msg.linear.x = -speed * np.sin(angle)
 				msg.linear.y = speed * np.cos(angle)
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
@@ -159,7 +159,7 @@ class UDPPublisher(Node):
 
 				angle = np.radians(20)
 
-				msg.linear.x = speed * np.sin(angle)
+				msg.linear.x = -speed * np.sin(angle)
 				msg.linear.y = speed * np.cos(angle)
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
@@ -172,7 +172,7 @@ class UDPPublisher(Node):
 
 				angle = np.radians(300)
 
-				msg.linear.x = speed * np.sin(angle)
+				msg.linear.x = -speed * np.sin(angle)
 				msg.linear.y = speed * np.cos(angle)
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
