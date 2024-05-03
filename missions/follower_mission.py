@@ -346,7 +346,7 @@ class UDPPublisher(Node):
 			new_speed = v_ego + vel_accel*BROADCAST_INTERVAL
 			new_speed = min(new_speed, SPEED_LIMIT)
 
-			print(f"setting speed {new_speed} m/s and heading {new_heading}\n")
+			print(f"setting speed {new_speed} m/s and heading {new_heading} | Current speed and heading: {v_ego} {head_ego}\n")
 
 			new_heading = np.radians(new_heading)
 			head_ego = np.radians(head_ego)
