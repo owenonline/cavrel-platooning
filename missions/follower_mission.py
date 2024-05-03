@@ -42,7 +42,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 0.1
+SPEED_LIMIT = 0.4
 geodesic = pyproj.Geod(ellps='WGS84')
 center_latitude = (28.607980 + 28.607292) / 2
 center_longitude = (-81.195662 + -81.194750) / 2
@@ -351,12 +351,12 @@ class UDPPublisher(Node):
 			new_heading = np.radians(new_heading)
 			head_ego = np.radians(head_ego)
 
-			msg.linear.x = new_speed * math.cos(new_heading)
-			msg.linear.y = new_speed * math.sin(new_heading)
+			msg.linear.x = -new_speed * math.sin(new_heading)
+			msg.linear.y = new_speed * math.cos(new_heading)
 			msg.linear.z = 0.0
 			msg.angular.x = 0.0
 			msg.angular.y = 0.0
-			msg.angular.z = (new_heading - head_ego) / BROADCAST_INTERVAL
+			msg.angular.z = 0.0
 
 			print(msg.linear.x, msg.linear.y, msg.angular.z)
 
