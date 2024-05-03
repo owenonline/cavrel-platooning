@@ -129,8 +129,10 @@ class UDPPublisher(Node):
 		if self.mission_status == MOVING:
 			msg = Twist()
 
+			speed = 0.3
+
 			if time() - self.start_time < 5:
-				print("x at 0.0, y at 0.0")
+				print("no movement")
 				msg.linear.x = 0.0
 				msg.linear.y = 0.0
 				msg.linear.z = 0.0
@@ -140,9 +142,12 @@ class UDPPublisher(Node):
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 10:
-				print("y at 0.3, x 0")
-				msg.linear.x = 0.0
-				msg.linear.y = 0.3
+				print("heading at 345 degrees")
+
+				angle = np.radians(345)
+
+				msg.linear.x = speed * np.cos(angle)
+				msg.linear.y = speed * np.sin(angle)
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
@@ -150,9 +155,12 @@ class UDPPublisher(Node):
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 15:
-				print("y at 0.3, x at 0.3")
-				msg.linear.x = 0.3
-				msg.linear.y = 0.3
+				print("heading at 20 degrees")
+
+				angle = np.radians(20)
+
+				msg.linear.x = speed * np.cos(angle)
+				msg.linear.y = speed * np.sin(angle)
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
@@ -160,9 +168,12 @@ class UDPPublisher(Node):
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 20:
-				print("y at 0.3, x at -0.3")
-				msg.linear.x = -0.3
-				msg.linear.y = 0.3
+				print("heading at 300 degrees")
+
+				angle = np.radians(300)
+
+				msg.linear.x = speed * np.cos(angle)
+				msg.linear.y = speed * np.sin(angle)
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
