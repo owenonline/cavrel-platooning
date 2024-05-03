@@ -129,7 +129,47 @@ class UDPPublisher(Node):
 		if self.mission_status == MOVING:
 			msg = Twist()
 
-			if time() - self.start_time > 3:
+			if time() - self.start_time < 5:
+				print("x at 0.0")
+				msg.linear.x = 0.0
+				msg.linear.y = 0.0
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.0
+
+				self.publisher.publish(msg)
+			elif time() - self.start_time < 10:
+				print("x at 0.1")
+				msg.linear.x = 0.1
+				msg.linear.y = 0.0
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.0
+
+				self.publisher.publish(msg)
+			elif time() - self.start_time < 15:
+				print("x at 0.3")
+				msg.linear.x = 0.3
+				msg.linear.y = 0.0
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.0
+
+				self.publisher.publish(msg)
+			elif time() - self.start_time < 20:
+				print("turn at 0.3")
+				msg.linear.x = 0.0
+				msg.linear.y = 0.0
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.3
+
+				self.publisher.publish(msg)
+			else:
 				print("...stopped, disarming")
 				msg.linear.x = 0.0
 				msg.linear.y = 0.0
@@ -147,17 +187,8 @@ class UDPPublisher(Node):
 				disarm_future.add_done_callback(self.disarm_callback)
 
 				self.mission_status = DISARMING
-			else:
-				msg.linear.x = self.vset
-				msg.linear.y = 0.0
-				msg.linear.z = 0.0
-				msg.angular.x = 0.0
-				msg.angular.y = 0.0
-				msg.angular.z = 0.0
-
-				print(msg)
-				self.publisher.publish(msg)
 			return
+		
 		
 		if self.mission_status == DISARMING:
 			msg = Twist()
