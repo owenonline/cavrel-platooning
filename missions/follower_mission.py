@@ -94,7 +94,7 @@ class UDPPublisher(Node):
 			print('killswitch service not available, waiting again...')
 
 		self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
-		self.mission_timer = self.create_timer(LISTEN_INTERVAL, self.mission_timer_callback)
+		self.mission_timer = self.create_timer(BROADCAST_INTERVAL, self.mission_timer_callback)
 
 		self.log_handle = open(f"car{car}_log.txt", "w")
 
@@ -184,10 +184,10 @@ class UDPPublisher(Node):
 				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
 
 				# simulate the motion of the cars
-				x_sim_target = x_target + v_target*np.sin(head_target)*LISTEN_INTERVAL
-				y_sim_target = y_target + v_target*np.cos(head_target)*LISTEN_INTERVAL
-				x_sim_ego = x + v*np.sin(head)*LISTEN_INTERVAL
-				y_sim_ego = y + v*np.cos(head)*LISTEN_INTERVAL
+				x_sim_target = x_target + v_target*np.sin(head_target)*BROADCAST_INTERVAL
+				y_sim_target = y_target + v_target*np.cos(head_target)*BROADCAST_INTERVAL
+				x_sim_ego = x + v*np.sin(head)*BROADCAST_INTERVAL
+				y_sim_ego = y + v*np.cos(head)*BROADCAST_INTERVAL
 
 				# determine the point where the following car *should* be to be perfectly maintaining its following distance
 				x_goal = x_sim_target - goal_follow_distance*np.sin(head_target)
@@ -219,7 +219,7 @@ class UDPPublisher(Node):
 		return qx, qy
 	
 	def velocity_controller(self, v, v_ego):
-		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/LISTEN_INTERVAL
+		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/BROADCAST_INTERVAL
 		return accel
 	
 	def distance_to_line(self, x0, y0, dx, dy, x, y):
@@ -343,7 +343,7 @@ class UDPPublisher(Node):
 			vel_accel = self.velocity_controller(v, v_ego)
 			delta = self.heading_controller(head_ego, v_ego, head)
 			new_heading = head_ego + delta
-			new_speed = v_ego + vel_accel*LISTEN_INTERVAL
+			new_speed = v_ego + vel_accel*BROADCAST_INTERVAL
 			new_speed = min(new_speed, SPEED_LIMIT)
 
 			print(f"setting speed {new_speed} m/s and heading {new_heading}\n")
