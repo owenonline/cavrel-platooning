@@ -146,7 +146,7 @@ class UDPPublisher(Node):
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
-				msg.angular.z = 0.0
+				msg.angular.z = 0.1
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 15:
@@ -156,7 +156,7 @@ class UDPPublisher(Node):
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
-				msg.angular.z = 0.0
+				msg.angular.z = 0.3
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 20:
@@ -166,7 +166,7 @@ class UDPPublisher(Node):
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
-				msg.angular.z = 0.3
+				msg.angular.z = 0.5
 
 				self.publisher.publish(msg)
 			else:
