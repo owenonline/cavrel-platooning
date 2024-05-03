@@ -42,7 +42,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 0.05
+SPEED_LIMIT = 0.1
 geodesic = pyproj.Geod(ellps='WGS84')
 center_latitude = (28.607980 + 28.607292) / 2
 center_longitude = (-81.195662 + -81.194750) / 2
@@ -329,7 +329,7 @@ class UDPPublisher(Node):
 
 			if not res.success:
 				print(res.message)
-				self.mission_status = ABORT
+				# self.mission_status = ABORT
 				return
 			
 			v, head = res.x
