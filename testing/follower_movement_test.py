@@ -140,7 +140,7 @@ class UDPPublisher(Node):
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 10:
-				print("y at 0.3, turn at 0")
+				print("y at 0.3, x 0")
 				msg.linear.x = 0.0
 				msg.linear.y = 0.3
 				msg.linear.z = 0.0
@@ -150,23 +150,23 @@ class UDPPublisher(Node):
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 15:
-				print("y at 0.3, turn at 0.5")
-				msg.linear.x = 0.0
+				print("y at 0.3, x at 0.3")
+				msg.linear.x = 0.3
 				msg.linear.y = 0.3
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
-				msg.angular.z = 0.5
+				msg.angular.z = 0.0
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 20:
-				print("y at 0.3, turn at -0.5")
-				msg.linear.x = 0.0
+				print("y at 0.3, x at -0.3")
+				msg.linear.x = -0.3
 				msg.linear.y = 0.3
 				msg.linear.z = 0.0
 				msg.angular.x = 0.0
 				msg.angular.y = 0.0
-				msg.angular.z = -0.5
+				msg.angular.z = 0.0
 
 				self.publisher.publish(msg)
 			else:
