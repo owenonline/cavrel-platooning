@@ -140,17 +140,7 @@ class UDPPublisher(Node):
 
 				self.publisher.publish(msg)
 			elif time() - self.start_time < 10:
-				print("x at 0.3, y at 0.0")
-				msg.linear.x = 0.3
-				msg.linear.y = 0.0
-				msg.linear.z = 0.0
-				msg.angular.x = 0.0
-				msg.angular.y = 0.0
-				msg.angular.z = 0.0
-
-				self.publisher.publish(msg)
-			elif time() - self.start_time < 15:
-				print("x at 0.0, y at 0.0.3")
+				print("y at 0.3, turn at 0")
 				msg.linear.x = 0.0
 				msg.linear.y = 0.3
 				msg.linear.z = 0.0
@@ -159,16 +149,26 @@ class UDPPublisher(Node):
 				msg.angular.z = 0.0
 
 				self.publisher.publish(msg)
-			# elif time() - self.start_time < 20:
-			# 	print("turn at 0.5")
-			# 	msg.linear.x = 0.0
-			# 	msg.linear.y = 0.0
-			# 	msg.linear.z = 0.0
-			# 	msg.angular.x = 0.0
-			# 	msg.angular.y = 0.0
-			# 	msg.angular.z = 0.0
+			elif time() - self.start_time < 15:
+				print("y at 0.3, turn at 0.5")
+				msg.linear.x = 0.0
+				msg.linear.y = 0.3
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = 0.5
 
-			# 	self.publisher.publish(msg)
+				self.publisher.publish(msg)
+			elif time() - self.start_time < 20:
+				print("y at 0.3, turn at -0.5")
+				msg.linear.x = 0.0
+				msg.linear.y = 0.3
+				msg.linear.z = 0.0
+				msg.angular.x = 0.0
+				msg.angular.y = 0.0
+				msg.angular.z = -0.5
+
+				self.publisher.publish(msg)
 			else:
 				print("...stopped, disarming")
 				msg.linear.x = 0.0
