@@ -44,7 +44,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 1.3
+SPEED_LIMIT = 3.0
 geodesic = pyproj.Geod(ellps='WGS84')
 center_latitude = (28.607980 + 28.607292) / 2
 center_longitude = (-81.195662 + -81.194750) / 2
@@ -56,6 +56,7 @@ class UDPPublisher(Node):
 
 		# set up logging so I can visualize what's happening
 		self.datapoints = []
+
 
         # setup related to udp communication
 		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -172,7 +173,10 @@ class UDPPublisher(Node):
 			targets.append((x2, y2, heading, velocity, self.car - i))
 
 		# save the current state for logging later
-		tmp = [(x, y) for x, y, _, _, _ in targets] + [self.coords_to_local(self.satellite.latitude, self.satellite.longitude)]
+		ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
+		eh = self.heading.data
+		ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
+		tmp = [(x, y, h, v) for x, y, h, v, _ in targets] + [(ex, ey, eh, ev)]
 		self.datapoints.append(tmp)
 
 		def minimization_objective(params):
@@ -204,10 +208,16 @@ class UDPPublisher(Node):
 		
 		bounds = Bounds([0, -360], [10, 360])
 		_, _, head, v, _ = targets[0]
-		
-		res = minimize(minimization_objective, [v, head], method='SLSQP', bounds=bounds)
 
-		return res
+		guesses = [[0, head], [v, head], [5, head]]
+		best_score = np.inf
+		best = None
+		for guess in guesses:
+			res = minimize(minimization_objective, guess, method='SLSQP', bounds=bounds)
+			if res.fun < best_score:
+				best = res
+
+		return best
 	
 	def coords_to_local(self, target_lat, target_lon):
 		# Convert lat, lon to radians
@@ -226,86 +236,87 @@ class UDPPublisher(Node):
 		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/BROADCAST_INTERVAL
 		return accel
 	
-	# def distance_to_line(self, x0, y0, dx, dy, x, y):
-	# 	lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
-	# 	closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
-	# 	distance = np.linalg.norm(closest_point - np.array([x, y]))
-	# 	return distance, closest_point
+	def distance_to_line(self, x0, y0, dx, dy, x, y):
+		lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
+		closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
+		distance = np.linalg.norm(closest_point - np.array([x, y]))
+		distance = np.nan_to_num(distance)
+		return distance, closest_point
  
-	# def heading_controller(self, head_ego, v_ego, target_head):
-	# 	"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
-	# 	points = []
-	# 	initial_guess = None
-
-	# 	# get the local coordinates of the last two locations of all other cars
-	# 	for i in range(self.car):
-	# 		(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
-	# 		x1, y1 = self.coords_to_local(lat1, lon1)
-	# 		x2, y2 = self.coords_to_local(lat2, lon2)
-	# 		points.append((x1, y1))
-	# 		points.append((x2, y2))
-
-	# 		if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
-	# 			initial_guess = [x1, y1, x2 - x1, y2 - y1]
-
-	# 	# get the local coordinates of the ego car
-	# 	lat1, lon1 = self.satellite.latitude, self.satellite.longitude
-	# 	ex1, ey1 = self.coords_to_local(lat1, lon1)
-
-	# 	def distances_to_line(params, points):
-	# 		x0, y0, dx, dy = params
-	# 		distances = []
-	# 		for (x, y) in points:
-	# 			distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
-	# 			distances.append(distance)
-	# 		return distances
-		
-	# 	# compute a line of best fit using the last 2 positions of all other cars
-	# 	# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
-	# 	# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
-	# 	result = least_squares(distances_to_line, initial_guess, args=(points,))
-
-	# 	x0_opt, y0_opt, dx_opt, dy_opt = result.x
-	# 	heading_diff = target_head - head_ego
-
-	# 	dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
-	# 	cte = np.arctan2(K*dist, v_ego)
-	# 	cte = np.rad2deg(cte)
-
-	# 	steer = heading_diff + cte
-	# 	return steer
-	
 	def heading_controller(self, head_ego, v_ego, target_head):
 		"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
 		points = []
+		initial_guess = None
 
 		# get the local coordinates of the last two locations of all other cars
 		for i in range(self.car):
-			for point in self.car_positions[i]:
-				(lat, lon, _, _) = point
-				x, y = self.coords_to_local(lat, lon)
-				points.append((x, y))
+			(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
+			x1, y1 = self.coords_to_local(lat1, lon1)
+			x2, y2 = self.coords_to_local(lat2, lon2)
+			points.append((x1, y1))
+			points.append((x2, y2))
 
-		points.sort(key=lambda point: point[0])
-		xs, ys = zip(*points)
+			if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
+				initial_guess = [x2, y2, x2 - x1, y2 - y1]
 
-		cs = CubicSpline(xs, ys)
+		# get the local coordinates of the ego car
+		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
+		ex1, ey1 = self.coords_to_local(lat1, lon1)
 
-		def distance_to_spline(x):
-			ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
-			spline_y = cs(x)
-			return np.sqrt((ex - x)**2 + (ey - spline_y)**2)
-
-		res = minimize_scalar(distance_to_spline, bounds=(min(xs), max(xs)), method='bounded')
-		closest_x = res.x
-		dist = distance_to_spline(closest_x)
-
-		heading_diff = target_head - head_ego
-		cte = np.arctan2(K * dist, v_ego)
-		cte = np.rad2deg(cte)
+		def distances_to_line(params, points):
+			x0, y0, dx, dy = params
+			distances = []
+			for (x, y) in points:
+				distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
+				distances.append(distance)
+			return distances
 		
+		# compute a line of best fit using the last 2 positions of all other cars
+		# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
+		# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
+		result = least_squares(distances_to_line, initial_guess, args=(points,))
+
+		x0_opt, y0_opt, dx_opt, dy_opt = result.x
+		heading_diff = target_head - head_ego
+
+		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
+		cte = np.arctan2(K*dist, v_ego)
+		# cte = np.rad2deg(cte)
+
 		steer = heading_diff + cte
 		return steer
+	
+	# def heading_controller(self, head_ego, v_ego, target_head):
+	# 	"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
+	# 	points = []
+
+	# 	# get the local coordinates of the last two locations of all other cars
+	# 	for i in range(self.car):
+	# 		for point in self.car_positions[i]:
+	# 			(lat, lon, _, _) = point
+	# 			x, y = self.coords_to_local(lat, lon)
+	# 			points.append((x, y))
+
+	# 	points.sort(key=lambda point: point[0])
+	# 	xs, ys = zip(*points)
+
+	# 	cs = CubicSpline(xs, ys)
+
+	# 	def distance_to_spline(x):
+	# 		ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
+	# 		spline_y = cs(x)
+	# 		return np.sqrt((ex - x)**2 + (ey - spline_y)**2)
+
+	# 	res = minimize_scalar(distance_to_spline, bounds=(min(xs), max(xs)), method='bounded')
+	# 	closest_x = res.x
+	# 	dist = distance_to_spline(closest_x)
+
+	# 	heading_diff = target_head - head_ego
+	# 	cte = np.arctan2(K * dist, v_ego)
+	# 	cte = np.rad2deg(cte)
+		
+	# 	steer = heading_diff + cte
+	# 	return steer
 
 	def mission_timer_callback(self):
 		"""Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
@@ -371,6 +382,8 @@ class UDPPublisher(Node):
 				return
 			
 			v, head = res.x
+
+			print(f"calculated targer v {v} and heading {head}")
 
 			# get the motion of the ego vehicle
 			v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
