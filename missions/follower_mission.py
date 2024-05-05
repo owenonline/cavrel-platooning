@@ -172,11 +172,7 @@ class UDPPublisher(Node):
 			targets.append((x2, y2, heading, velocity, self.car - i))
 
 		# save the current state for logging later
-		tmp = targets[:]
-		_x, _y = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
-		_heading = self.heading.data
-		_velocity = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
-		tmp.append((_x, _y, _heading, _velocity, 0))
+		tmp = [(x, y) for x, y, _, _, _ in targets] + [self.coords_to_local(self.satellite.latitude, self.satellite.longitude)]
 		self.datapoints.append(tmp)
 
 		def minimization_objective(params):
