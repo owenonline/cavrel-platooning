@@ -12,8 +12,10 @@ from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
 import tf_transformations # TODO: make sure this is installed on the cars
 from collections import defaultdict
 from scipy.spatial.transform import Rotation
-from scipy.optimize import minimize, least_squares, Bounds
+from scipy.optimize import minimize, least_squares, Bounds, minimize_scalar
 from scipy.stats import linregress
+from scipy.interpolate import CubicSpline
+import pickle
 import pyproj
 import socket
 from time import sleep, time
@@ -34,7 +36,7 @@ EARTH_RADIUS = 6371e3 # earth radius in meters
 # TODO: Tune params below
 KPV = 0.3
 KDV = 0.5
-K = 0.5
+K = 0.3
 BROADCAST_INTERVAL = 0.1 # same for all cars
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
@@ -42,7 +44,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 1.5
+SPEED_LIMIT = 1.3
 geodesic = pyproj.Geod(ellps='WGS84')
 center_latitude = (28.607980 + 28.607292) / 2
 center_longitude = (-81.195662 + -81.194750) / 2
@@ -51,6 +53,9 @@ center_orientation = DUE_EAST
 class UDPPublisher(Node):
 	def __init__(self, car):
 		super().__init__('udp_publisher')
+
+		# set up logging so I can visualize what's happening
+		self.datapoints = []
 
         # setup related to udp communication
 		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -96,8 +101,6 @@ class UDPPublisher(Node):
 		self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
 		self.mission_timer = self.create_timer(BROADCAST_INTERVAL, self.mission_timer_callback)
 
-		self.log_handle = open(f"car{car}_log.txt", "w")
-
 		# setup kill switch
 		self.stop_thread = threading.Thread(target=self.listen_for_stop)
 		self.stop_thread.daemon = True
@@ -131,8 +134,6 @@ class UDPPublisher(Node):
 
 		data, _ = self.listen_sock.recvfrom(1024)
 		data_json = json.loads(data.decode())
-
-		self.log_handle.write(f"Received data: {data_json}\n")
 
 		# if one of the cars failed, stop the mission immediately
 		if data_json['abort']:
@@ -169,6 +170,14 @@ class UDPPublisher(Node):
 			velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
 			heading = head2
 			targets.append((x2, y2, heading, velocity, self.car - i))
+
+		# save the current state for logging later
+		tmp = targets[:]
+		_x, _y = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
+		_heading = self.heading.data
+		_velocity = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
+		tmp.append((_x, _y, _heading, _velocity, 0))
+		self.datapoints.append(tmp)
 
 		def minimization_objective(params):
 			v, head = params
@@ -221,55 +230,84 @@ class UDPPublisher(Node):
 		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/BROADCAST_INTERVAL
 		return accel
 	
-	def distance_to_line(self, x0, y0, dx, dy, x, y):
-		lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
-		closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
-		distance = np.linalg.norm(closest_point - np.array([x, y]))
-		return distance, closest_point
+	# def distance_to_line(self, x0, y0, dx, dy, x, y):
+	# 	lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
+	# 	closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
+	# 	distance = np.linalg.norm(closest_point - np.array([x, y]))
+	# 	return distance, closest_point
+ 
+	# def heading_controller(self, head_ego, v_ego, target_head):
+	# 	"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
+	# 	points = []
+	# 	initial_guess = None
+
+	# 	# get the local coordinates of the last two locations of all other cars
+	# 	for i in range(self.car):
+	# 		(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
+	# 		x1, y1 = self.coords_to_local(lat1, lon1)
+	# 		x2, y2 = self.coords_to_local(lat2, lon2)
+	# 		points.append((x1, y1))
+	# 		points.append((x2, y2))
+
+	# 		if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
+	# 			initial_guess = [x1, y1, x2 - x1, y2 - y1]
+
+	# 	# get the local coordinates of the ego car
+	# 	lat1, lon1 = self.satellite.latitude, self.satellite.longitude
+	# 	ex1, ey1 = self.coords_to_local(lat1, lon1)
+
+	# 	def distances_to_line(params, points):
+	# 		x0, y0, dx, dy = params
+	# 		distances = []
+	# 		for (x, y) in points:
+	# 			distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
+	# 			distances.append(distance)
+	# 		return distances
+		
+	# 	# compute a line of best fit using the last 2 positions of all other cars
+	# 	# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
+	# 	# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
+	# 	result = least_squares(distances_to_line, initial_guess, args=(points,))
+
+	# 	x0_opt, y0_opt, dx_opt, dy_opt = result.x
+	# 	heading_diff = target_head - head_ego
+
+	# 	dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
+	# 	cte = np.arctan2(K*dist, v_ego)
+	# 	cte = np.rad2deg(cte)
+
+	# 	steer = heading_diff + cte
+	# 	return steer
 	
 	def heading_controller(self, head_ego, v_ego, target_head):
 		"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
 		points = []
-		initial_guess = None
 
 		# get the local coordinates of the last two locations of all other cars
 		for i in range(self.car):
-			(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
-			x1, y1 = self.coords_to_local(lat1, lon1)
-			x2, y2 = self.coords_to_local(lat2, lon2)
-			points.append((x1, y1))
-			points.append((x2, y2))
+			for point in self.car_positions[i]:
+				(lat, lon, _, _) = point
+				x, y = self.coords_to_local(lat, lon)
+				points.append((x, y))
 
-			if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
-				initial_guess = [x1, y1, x2 - x1, y2 - y1]
+		points.sort(key=lambda point: point[0])
+		xs, ys = zip(*points)
 
-		# get the local coordinates of the ego car
-		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
-		ex1, ey1 = self.coords_to_local(lat1, lon1)
+		cs = CubicSpline(xs, ys)
 
-		def distances_to_line(params, points):
-			x0, y0, dx, dy = params
-			distances = []
-			for (x, y) in points:
-				distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
-				distances.append(distance)
-			return distances
-		
-		# compute a line of best fit using the last 2 positions of all other cars
-		# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
-		# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
-		result = least_squares(distances_to_line, initial_guess, args=(points,))
+		def distance_to_spline(x):
+			ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
+			spline_y = cs(x)
+			return np.sqrt((ex - x)**2 + (ey - spline_y)**2)
 
-		x0_opt, y0_opt, dx_opt, dy_opt = result.x
+		res = minimize_scalar(distance_to_spline, bounds=(min(xs), max(xs)), method='bounded')
+		closest_x = res.x
+		dist = distance_to_spline(closest_x)
+
 		heading_diff = target_head - head_ego
-
-		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
-		cte = np.arctan2(K*dist, v_ego)
-		# cte = np.rad2deg(cte)
-
-		print(f"distance to line: {dist}")
-		print(f"CTE: {cte}, heading diff: {heading_diff}")
-
+		cte = np.arctan2(K * dist, v_ego)
+		cte = np.rad2deg(cte)
+		
 		steer = heading_diff + cte
 		return steer
 
@@ -338,8 +376,6 @@ class UDPPublisher(Node):
 			
 			v, head = res.x
 
-			self.log_handle.write(f"Minimization outcome: velocity = {v}, heading = {head}\n")
-
 			# get the motion of the ego vehicle
 			v_ego = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
 			head_ego = self.heading.data
@@ -383,13 +419,17 @@ class UDPPublisher(Node):
 	
 		if self.mission_status == MISSIONCOMPLETE:
 			print("MISSION COMPLETE")
-			self.log_handle.close()
 			self.destroy_node()
 			rclpy.shutdown()
 		
 		# if the mission is aborted, turn off all motors immediately.
 		if self.mission_status == ABORT:
 			print("ABORTING")
+
+			with open("datapoints.pkl", "wb") as f:
+				pickle.dump(self.datapoints, f)
+			self.datapoints = None
+
 			emergency_disarm_req = CommandLong.Request()
 			emergency_disarm_req.broadcast = False
 			emergency_disarm_req.command = 400
@@ -421,6 +461,9 @@ class UDPPublisher(Node):
 
 	def disarm_callback(self, future):
 		print("...disarmed")
+		with open("datapoints.pkl", "wb") as f:
+			pickle.dump(self.datapoints, f)
+		self.datapoints = None
 		self.mission_status = MISSIONCOMPLETE
 
 rclpy.init(args=None)
