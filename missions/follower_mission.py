@@ -42,7 +42,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 0.4
+SPEED_LIMIT = 1.5
 geodesic = pyproj.Geod(ellps='WGS84')
 center_latitude = (28.607980 + 28.607292) / 2
 center_longitude = (-81.195662 + -81.194750) / 2
@@ -139,10 +139,12 @@ class UDPPublisher(Node):
 			self.mission_status = ABORT
 
 		if data_json['car'] <= self.car:
-			# save the last two positions of the car
+			# save the last four positions of the car
+			# we mostly use the first two for calculating current velocity, but all 4 are used for cubic spline
+			# in the heading controller
 			position_update = (data_json['lat'], data_json['lon'], data_json['head'], data_json['time'])
 			self.car_positions[data_json['car']].append(position_update)
-			self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-2:] # only store the last 2 positions
+			self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-4:] # only store the last 4 positions
 
 	def telem_listener_callback(self, msg):
 		"""Saves the latest telemetry message"""
@@ -152,10 +154,6 @@ class UDPPublisher(Node):
 		"""Saves the latest GPS message"""
 		self.satellite = msg
 
-	# def velocity_listener_callback(self, msg):
-	# 	"""Saves the latest velocity message"""
-	# 	self.velocity = msg
-
 	def heading_listener_callback(self, msg):
 		"""Saves the latest heading message"""
 		self.heading = msg
@@ -163,7 +161,7 @@ class UDPPublisher(Node):
 	def get_goal_motion(self):
 		targets = []
 		for i in range(self.car):
-			(lat1, lon1, head1, time1), (lat2, lon2, head2, time2) = self.car_positions[i]
+			(lat1, lon1, head1, time1), (lat2, lon2, head2, time2) = self.car_positions[i][-2:]
 
 			x1, y1 = self.coords_to_local(lat1, lon1)
 			x2, y2 = self.coords_to_local(lat2, lon2)
@@ -179,9 +177,10 @@ class UDPPublisher(Node):
 
 			total_cost = 0
 			for target in targets:
+				# goal follow distance accounts for following distance and the lengths of the cars between the ego vehicle and the target vehicle
 				x_target, y_target, head_target, v_target, position = target
 				head_target = np.radians(head_target)
-				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
+				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1) # meters behind the target car
 
 				# simulate the motion of the cars
 				x_sim_target = x_target + v_target*np.sin(head_target)*BROADCAST_INTERVAL
@@ -231,14 +230,18 @@ class UDPPublisher(Node):
 	def heading_controller(self, head_ego, v_ego, target_head):
 		"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
 		points = []
+		initial_guess = None
 
 		# get the local coordinates of the last two locations of all other cars
 		for i in range(self.car):
-			(lat1, lon1, _, _), (lat2, lon2, _, _) = self.car_positions[i]
+			(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
 			x1, y1 = self.coords_to_local(lat1, lon1)
 			x2, y2 = self.coords_to_local(lat2, lon2)
 			points.append((x1, y1))
 			points.append((x2, y2))
+
+			if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
+				initial_guess = [x1, y1, x2 - x1, y2 - y1]
 
 		# get the local coordinates of the ego car
 		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
@@ -255,7 +258,6 @@ class UDPPublisher(Node):
 		# compute a line of best fit using the last 2 positions of all other cars
 		# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
 		# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
-		initial_guess = [1, 1, 1, 1]
 		result = least_squares(distances_to_line, initial_guess, args=(points,))
 
 		x0_opt, y0_opt, dx_opt, dy_opt = result.x
@@ -263,8 +265,10 @@ class UDPPublisher(Node):
 
 		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
 		cte = np.arctan2(K*dist, v_ego)
+		# cte = np.rad2deg(cte)
 
-		# print(f"CTE: {cte}, heading diff: {heading_diff}")
+		print(f"distance to line: {dist}")
+		print(f"CTE: {cte}, heading diff: {heading_diff}")
 
 		steer = heading_diff + cte
 		return steer
@@ -342,17 +346,18 @@ class UDPPublisher(Node):
 			
 			vel_accel = self.velocity_controller(v, v_ego)
 			delta = self.heading_controller(head_ego, v_ego, head)
-			new_heading = head_ego + delta
+			# new_heading = head_ego + delta
 			new_speed = v_ego + vel_accel*BROADCAST_INTERVAL
 			new_speed = min(new_speed, SPEED_LIMIT)
 
-			print(f"setting speed {new_speed} m/s and heading {new_heading} | Current speed and heading: {v_ego} {head_ego}\n")
+			print(f"setting speed {new_speed} m/s and heading delta {delta} | Current speed and heading: {v_ego} {head_ego}\n")
 
-			new_heading = np.radians(new_heading)
+			# new_heading = np.radians(new_heading)
+			delta = np.radians(delta)
 			head_ego = np.radians(head_ego)
 
-			msg.linear.x = -new_speed * math.sin(new_heading)
-			msg.linear.y = new_speed * math.cos(new_heading)
+			msg.linear.x = -new_speed * math.sin(delta)
+			msg.linear.y = new_speed * math.cos(delta)
 			msg.linear.z = 0.0
 			msg.angular.x = 0.0
 			msg.angular.y = 0.0
