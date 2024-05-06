@@ -46,8 +46,10 @@ FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters 
 DUE_EAST = 90
 SPEED_LIMIT = 3.0
 geodesic = pyproj.Geod(ellps='WGS84')
-center_latitude = (28.607980 + 28.607292) / 2
-center_longitude = (-81.195662 + -81.194750) / 2
+# center_latitude = (28.607980 + 28.607292) / 2
+# center_longitude = (-81.195662 + -81.194750) / 2
+center_latitude = 28.602202442735443 
+center_longitude = -81.19671976053279
 center_orientation = DUE_EAST
 
 class UDPPublisher(Node):
@@ -56,7 +58,6 @@ class UDPPublisher(Node):
 
 		# set up logging so I can visualize what's happening
 		self.datapoints = []
-
 
         # setup related to udp communication
 		self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
