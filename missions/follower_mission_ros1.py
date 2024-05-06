@@ -47,6 +47,13 @@ class UDPPublisher:
         rospy.init_node('udp_publisher')
         self.car = car
         self.datapoints = []
+        self.mission_status = MISSIONSTART
+        self.telem = None
+        self.satellite = None
+        self.heading = None
+        self.car_positions = defaultdict(list)
+
+        self.movement_message = Twist()
 
         self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         ttl = struct.pack('b', 1)
@@ -63,12 +70,15 @@ class UDPPublisher:
         self.satellite_subscriber = rospy.Subscriber('/mavros/global_position/global', NavSatFix, self.satellite_listener_callback)
         self.heading_subscriber = rospy.Subscriber('/mavros/global_position/compass_hdg', Float64, self.heading_listener_callback)
 
-        self.publisher = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=10)
+        self.publisher = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=20)
 
         rospy.Timer(rospy.Duration(BROADCAST_INTERVAL), self.broadcast_timer_callback)
         rospy.Timer(rospy.Duration(LISTEN_INTERVAL), self.listen_timer_callback)
         rospy.Timer(rospy.Duration(BROADCAST_INTERVAL), self.mission_timer_callback)
 
+        rospy.wait_for_service('/mavros/set_mode')
+        rospy.wait_for_service('/mavros/cmd/arming')
+        rospy.wait_for_service('/mavros/cmd/command')
         self.set_mode_service = rospy.ServiceProxy('/mavros/set_mode', SetMode)
         self.arming_service = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
         self.killswitch_service = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
@@ -77,11 +87,10 @@ class UDPPublisher:
         self.stop_thread.daemon = True
         self.stop_thread.start()
 
-        self.mission_status = MISSIONSTART
-        self.telem = None
-        self.satellite = None
-        self.heading = None
-        self.car_positions = defaultdict(list)
+        self.rate = rospy.Rate(20)
+        self.move_thread = threading.Thread(target=self.movement_callback)
+        self.move_thread.daemon = True
+        self.move_thread.start()
 
     def listen_for_stop(self):
         while True:
@@ -96,6 +105,11 @@ class UDPPublisher:
         msg = json.dumps({"head": self.heading.data, "car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT})
         msg = msg.encode()
         self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
+
+    def movement_callback(self):
+        while True:
+            self.publisher.publish(self.movement_message)
+            self.rate.sleep()
 
     def listen_timer_callback(self, event):
         data, _ = self.listen_sock.recvfrom(1024)
@@ -230,14 +244,21 @@ class UDPPublisher:
             try:
                 response = self.set_mode_service(0, 'OFFBOARD')
                 if response.mode_sent:
+                    print("arming")
                     self.mission_status = ARMING
             except rospy.ServiceException as e:
                 print("Service call failed: %s" % e)
         elif self.mission_status == ARMING:
-            msg = Twist()
-            msg.linear.x = 0.0
-            self.publisher.publish(msg)
+            try:
+                sleep(4)
+                response = self.arming_service(True)
+                if response.success:
+                    print("Moving")
+                    self.mission_status = MOVING
+            except rospy.ServiceException as e:
+                print("Service call failed: %s" % e)
         elif self.mission_status == MOVING:
+            print("Moving")
             res = self.get_goal_motion()
             if not res.success:
                 print("Optimization failed:", res.message)
@@ -253,7 +274,8 @@ class UDPPublisher:
             msg = Twist()
             msg.linear.x = -new_speed * math.sin(delta_rad)
             msg.linear.y = new_speed * math.cos(delta_rad)
-            self.publisher.publish(msg)
+            # self.publisher.publish(msg)
+            self.movement_message = msg
         elif self.mission_status == DISARMING:
             msg = Twist()
             self.publisher.publish(msg)
