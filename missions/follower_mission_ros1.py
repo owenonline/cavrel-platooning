@@ -12,12 +12,8 @@ import threading
 import numpy as np
 import math
 import pickle
-from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from collections import defaultdict
-from scipy.spatial.transform import Rotation
-from scipy.optimize import minimize, least_squares, Bounds, minimize_scalar
-from scipy.stats import linregress
-from scipy.interpolate import CubicSpline
+from scipy.optimize import minimize, least_squares
 import pyproj
 
 MISSIONSTART = 0
@@ -160,7 +156,7 @@ class UDPPublisher:
 
             return total_cost
 
-        bounds = Bounds([0, -360], [10, 360])
+        bounds = [(0, -360), (10, 360)]
         _, _, head, v, _ = targets[0]
         guesses = [[0, head], [v, head], [5, head]]
         best_score = np.inf
