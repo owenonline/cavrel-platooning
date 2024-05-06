@@ -94,7 +94,7 @@ class UDPPublisher:
 
     def listen_for_stop(self):
         while True:
-            command = input()
+            command = raw_input()
             if command.upper() == 'K':
                 self.mission_status = ABORT
 
@@ -302,6 +302,6 @@ class UDPPublisher:
             self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
-    car_number = int(input("Enter the car number: "))
+    car_number = int(raw_input("Enter the car number: "))
     udp_publisher = UDPPublisher(car_number)
     rospy.spin()
