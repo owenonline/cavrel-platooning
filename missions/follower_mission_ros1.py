@@ -108,6 +108,7 @@ class UDPPublisher:
 
     def movement_callback(self):
         while True:
+            print("Publishing movement message.")
             self.publisher.publish(self.movement_message)
             self.rate.sleep()
 
