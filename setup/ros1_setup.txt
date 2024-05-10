@@ -1,4 +1,8 @@
 source catkin_ws/devel/setup.bash
 roscore > roscore_out.txt 2>&1 &
+sudo chmod 777 /dev/ttyS0
 rosrun mavros mavros_node _fcu_url:=/dev/ttyS0:115200 > mavros_out.txt 2>&1 &
-rosrun nmea_navsat_driver nmea_serial_driver _port:=/dev/ttyACM0 _baud:=115200 > nmea_out.txt 2>&1 &
+rosservice call /mavros/set_stream_rate '
+stream_id: 0
+message_rate: 20
+on_off: 1'

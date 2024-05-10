@@ -1,3 +1,4 @@
+import random
 import rospy
 import struct
 from geometry_msgs.msg import Twist
@@ -7,6 +8,7 @@ from std_msgs.msg import Float64
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
 import socket
 from time import sleep, time
+from datetime import datetime
 import json
 import threading
 import numpy as np
@@ -15,7 +17,9 @@ import pickle
 from collections import defaultdict
 from scipy.optimize import minimize, least_squares
 import pyproj
+import argparse
 
+# set up mission states
 MISSIONSTART = 0
 ARMING = 1
 MOVING = 2
@@ -23,38 +27,49 @@ DISARMING = 3
 MISSIONCOMPLETE = 4
 ABORT = -1
 
-NUM_CARS = 2  # number of total cars in the network, including the ego vehicle
-EARTH_RADIUS = 6371e3  # earth radius in meters
+# set up constants
+EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.3
-BROADCAST_INTERVAL = 0.1  # same for all cars
+K = 0.43
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 CAR_LENGTH = 0.779
-FOLLOW_DISTANCE = 2.0  # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
+FOLLOW_DISTANCE = 2.0
 DUE_EAST = 90
 SPEED_LIMIT = 3.0
 geodesic = pyproj.Geod(ellps='WGS84')
-# center_latitude = (28.607980 + 28.607292) / 2
-# center_longitude = (-81.195662 + -81.194750) / 2
-center_latitude = 28.602202442735443 
-center_longitude = -81.19671976053279
-center_orientation = DUE_EAST
+
+# set up args
+parser = argparse.ArgumentParser()
+parser.add_argument('--track_path', type=str, default="missions/tracks/bus_loop.json")
+parser.add_argument('--broadcast_int', type=float, default=0.1)
+parser.add_argument('--drop_rate', type=float, default=0.0)
+parser.add_argument('--car_number', type=int, default=2)
 
 class UDPPublisher:
-    def __init__(self, car):
+    def __init__(self, car_number, broadcast_interval, drop_rate, center_lat, center_lon, center_orientation, track_name):
         rospy.init_node('udp_publisher')
-        self.car = car
+
+        # add args to object
+        self.car = car_number
+        self.broadcast_interval = broadcast_interval
+        self.drop_rate = drop_rate
+        self.center_latitude = center_lat
+        self.center_longitude = center_lon
+        self.center_orientation = center_orientation
+        self.track_name = track_name
+
+        # set starting vars
         self.datapoints = []
         self.mission_status = MISSIONSTART
         self.telem = None
         self.satellite = None
         self.heading = None
         self.car_positions = defaultdict(list)
-
         self.movement_message = Twist()
 
+        # socket broadcast setup
         self.broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         ttl = struct.pack('b', 1)
         self.broadcast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
@@ -66,40 +81,47 @@ class UDPPublisher:
         mreq = struct.pack('4sL', group, socket.INADDR_ANY)
         self.listen_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
+        # sensor subscription setup
         self.telem_subscriber = rospy.Subscriber('/mavros/global_position/local', Odometry, self.telem_listener_callback)
         self.satellite_subscriber = rospy.Subscriber('/mavros/global_position/global', NavSatFix, self.satellite_listener_callback)
         self.heading_subscriber = rospy.Subscriber('/mavros/global_position/compass_hdg', Float64, self.heading_listener_callback)
 
+        # publisher setup
         self.publisher = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=20)
 
-        rospy.Timer(rospy.Duration(BROADCAST_INTERVAL), self.broadcast_timer_callback)
+        rospy.Timer(rospy.Duration(self.broadcast_interval), self.broadcast_timer_callback)
         rospy.Timer(rospy.Duration(LISTEN_INTERVAL), self.listen_timer_callback)
-        rospy.Timer(rospy.Duration(BROADCAST_INTERVAL), self.mission_timer_callback)
+        rospy.Timer(rospy.Duration(self.broadcast_interval), self.mission_timer_callback)
 
         rospy.wait_for_service('/mavros/set_mode')
         rospy.wait_for_service('/mavros/cmd/arming')
         rospy.wait_for_service('/mavros/cmd/command')
         self.set_mode_service = rospy.ServiceProxy('/mavros/set_mode', SetMode)
         self.arming_service = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
-        self.killswitch_service = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
-
-        self.stop_thread = threading.Thread(target=self.listen_for_stop)
-        self.stop_thread.daemon = True
-        self.stop_thread.start()
 
         self.rate = rospy.Rate(20)
         self.move_thread = threading.Thread(target=self.movement_callback)
         self.move_thread.daemon = True
         self.move_thread.start()
 
+        # set up killswitch
+        self.killswitch_service = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+        self.stop_thread = threading.Thread(target=self.listen_for_stop)
+        self.stop_thread.daemon = True
+        self.stop_thread.start()
+
     def listen_for_stop(self):
+        """Kills the mission if the user presses ENTER."""
+        
         while True:
             command = raw_input()
             if command.upper() == 'K':
                 self.mission_status = ABORT
 
     def broadcast_timer_callback(self, event):
-        if self.satellite is None:
+        """Broadcasts the car's current GPS position and heading to all other cars in the network, dropping packets at a specified rate."""
+
+        if self.satellite is None or self.heading is None or (self.drop_rate > 0 and random.random() < self.drop_rate):
             return
 
         msg = json.dumps({"head": self.heading.data, "car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT})
@@ -107,12 +129,15 @@ class UDPPublisher:
         self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
 
     def movement_callback(self):
+        """Publishes movement commands at the rate required to keep the vehicle armed"""
+
         while True:
-            print("Publishing movement message.")
             self.publisher.publish(self.movement_message)
             self.rate.sleep()
 
     def listen_timer_callback(self, event):
+        """Listens for and stores the latest broadcasts from other cars in the network."""
+
         data, _ = self.listen_sock.recvfrom(1024)
         data_json = json.loads(data.decode())
         if data_json['abort']:
@@ -123,15 +148,20 @@ class UDPPublisher:
             self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-4:]
 
     def telem_listener_callback(self, msg):
+        """Saves the latest telemetry message"""
         self.telem = msg
 
     def satellite_listener_callback(self, msg):
+        """Saves the latest GPS message"""
         self.satellite = msg
 
     def heading_listener_callback(self, msg):
+        """Saves the latest heading message"""
         self.heading = msg
 
     def get_goal_motion(self):
+        """Calculates the target speed and heading for the ego vehicle based on the positions of the other cars in the network."""
+
         targets = []
         for i in range(self.car):
             (lat1, lon1, head1, time1), (lat2, lon2, head2, time2) = self.car_positions[i][-2:]
@@ -159,10 +189,10 @@ class UDPPublisher:
                 head_target = np.radians(head_target)
                 goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
 
-                x_sim_target = x_target + v_target*np.sin(head_target)*BROADCAST_INTERVAL
-                y_sim_target = y_target + v_target*np.cos(head_target)*BROADCAST_INTERVAL
-                x_sim_ego = x + v*np.sin(head)*BROADCAST_INTERVAL
-                y_sim_ego = y + v*np.cos(head)*BROADCAST_INTERVAL
+                x_sim_target = x_target + v_target*np.sin(head_target)*self.broadcast_interval
+                y_sim_target = y_target + v_target*np.cos(head_target)*self.broadcast_interval
+                x_sim_ego = x + v*np.sin(head)*self.broadcast_interval
+                y_sim_ego = y + v*np.cos(head)*self.broadcast_interval
 
                 x_goal = x_sim_target - goal_follow_distance*np.sin(head_target)
                 y_goal = y_sim_target - goal_follow_distance*np.cos(head_target)
@@ -171,7 +201,7 @@ class UDPPublisher:
 
             return total_cost
 
-        bounds = [(0, -360), (10, 360)]
+        bounds = [(0, 10), (-360, 360)]
         _, _, head, v, _ = targets[0]
         guesses = [[0, head], [v, head], [5, head]]
         best_score = np.inf
@@ -184,22 +214,26 @@ class UDPPublisher:
         return best
 
     def coords_to_local(self, target_lat, target_lon):
+        """Converts GPS coordinates to local cartesian coordinates with respect to the track center point."""
+        
         target_lat_rad, target_lon_rad = math.radians(target_lat), math.radians(target_lon)
-        current_lat_rad, current_lon_rad = math.radians(center_latitude), math.radians(center_longitude)
+        current_lat_rad, current_lon_rad = math.radians(self.center_latitude), math.radians(self.center_longitude)
 
         x = EARTH_RADIUS * (target_lon_rad - current_lon_rad) * math.cos((current_lat_rad + target_lat_rad) / 2)
         y = EARTH_RADIUS * (target_lat_rad - current_lat_rad)
 
-        angle = math.radians(center_orientation - DUE_EAST)
+        angle = math.radians(self.center_orientation - DUE_EAST)
         qx = math.cos(angle) * x - math.sin(angle) * y
         qy = math.sin(angle) * x + math.cos(angle) * y
         return qx, qy
 
     def velocity_controller(self, v, v_ego):
-        accel = KPV*(v - v_ego) + KDV*(v - v_ego)/BROADCAST_INTERVAL
+        """PD controller for velocity control. Computes the acceleration needed to match the target speed."""
+        accel = KPV*(v - v_ego) + KDV*(v - v_ego)/self.broadcast_interval
         return accel
 
     def distance_to_line(self, x0, y0, dx, dy, x, y):
+        """Computes the distance between a point and a line."""
         lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
         closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
         distance = np.linalg.norm(closest_point - np.array([x, y]))
@@ -207,6 +241,8 @@ class UDPPublisher:
         return distance, closest_point
 
     def heading_controller(self, head_ego, v_ego, target_head):
+        """Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car.
+		CURRENTLY APPROXIMATES CROSS-TRACK ERROR WITH A STRAIGHT LINE FIT."""
         points = []
         initial_guess = None
         for i in range(self.car):
@@ -240,6 +276,8 @@ class UDPPublisher:
         return steer
 
     def mission_timer_callback(self, event):
+        """Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
+
         if self.mission_status == MISSIONSTART:
             print("Switching to offboard mode.")
             try:
@@ -269,13 +307,14 @@ class UDPPublisher:
             head_ego = self.heading.data
             vel_accel = self.velocity_controller(v, v_ego)
             delta = self.heading_controller(head_ego, v_ego, head)
-            new_speed = v_ego + vel_accel * BROADCAST_INTERVAL
+            new_speed = v_ego + vel_accel * self.broadcast_interval
             new_speed = min(new_speed, SPEED_LIMIT)
             delta_rad = np.radians(delta)
             msg = Twist()
             msg.linear.x = -new_speed * math.sin(delta_rad)
             msg.linear.y = new_speed * math.cos(delta_rad)
             # self.publisher.publish(msg)
+            print(msg.linear.x, msg.linear.y)
             self.movement_message = msg
         elif self.mission_status == DISARMING:
             msg = Twist()
@@ -284,24 +323,27 @@ class UDPPublisher:
             rospy.signal_shutdown("Mission completed successfully.")
         elif self.mission_status == ABORT:
             print("Aborting mission.")
-            with open("datapoints.pkl", "wb") as f:
+            now = datetime.now()
+            formatted_date = now.strftime('%d%m%y')
+            file_path = "missions/datapoints/py2_{car}_{track}_{date}.pkl".format(car=self.car, track=self.track_name, date=formatted_date)
+            with open(file_path, "wb") as f:
                 pickle.dump(self.datapoints, f)
             self.datapoints = None
-            emergency_disarm_req = CommandLong()
-            emergency_disarm_req.broadcast = False
-            emergency_disarm_req.command = 400
-            emergency_disarm_req.confirmation = 0
-            emergency_disarm_req.param1 = 0.0
-            emergency_disarm_req.param2 = 21196.0
-            emergency_disarm_req.param3 = 0.0
-            emergency_disarm_req.param4 = 0.0
-            emergency_disarm_req.param5 = 0.0
-            emergency_disarm_req.param6 = 0.0
-            emergency_disarm_req.param7 = 0.0
-            self.killswitch_service(emergency_disarm_req)
+            self.killswitch_service(False, 400, 0, 0.0, 21196.0, 0.0, 0.0, 0.0, 0.0, 0.0)
             self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
-    car_number = int(raw_input("Enter the car number: "))
-    udp_publisher = UDPPublisher(car_number)
+    args = parser.parse_args()
+    with open(args.track_path, 'r') as f:
+        track = json.load(f)
+
+    car_number = args.car_number
+    broadcast_interval = args.broadcast_int
+    drop_rate = args.drop_rate
+    track_name = track['name']
+    center_lat = track['center']['lat']
+    center_lon = track['center']['lon']
+    center_orientation = DUE_EAST
+
+    udp_publisher = UDPPublisher(car_number, broadcast_interval, drop_rate, center_lat, center_lon, center_orientation, track_name)
     rospy.spin()

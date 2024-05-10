@@ -1,0 +1,4 @@
+testing/
+archive/
+__pycache__/
+*.pkl
