@@ -27,7 +27,6 @@ import numpy as np
 import math
 import os
 import argparse
-import keyboard
 
 # set up mission states
 MISSIONSTART = 0
@@ -38,11 +37,6 @@ MISSIONCOMPLETE = 4
 ABORT = -1
 
 # set up constants
-EARTH_RADIUS = 6371e3
-KPV = 0.3
-KDV = 0.5
-K = 0.05
-LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 WHEELBASE = 0.48
 CAR_LENGTH = 0.779
@@ -54,6 +48,17 @@ geodesic = pyproj.Geod(ellps='WGS84')
 class UDPPublisher(Node):
 	def __init__(self):
 		super().__init__('udp_publisher')
+
+		self.mission_status = MISSIONSTART
+		self.pressed_keys = set()
+
+		self.listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		self.listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		self.listen_sock.bind(('', 5004))
+		group = socket.inet_aton('224.0.0.1')
+		mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+		self.listen_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+		self.listen_timer = self.create_timer(0.001, self.listen_timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
 
 		# publisher setup
 		print('setting up motion clients')
@@ -72,12 +77,13 @@ class UDPPublisher(Node):
 		self.publisher = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 20)
 		self.mission_timer = self.create_timer(0.1, self.mission_timer_callback)
 
-	def listen_for_stop(self):
-		"""Kills the mission if the user presses ENTER."""
+	def listen_timer_callback(self):
+		"""Listens for and stores the latest broadcasts from other cars in the network."""
 
-		while True:
-			input()
-			self.mission_status = ABORT
+		data, _ = self.listen_sock.recvfrom(1024)
+		data_json = json.loads(data.decode())
+
+		self.pressed_keys = set(data_json['keys'])
 
 	def mission_timer_callback(self):
 		"""Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
@@ -110,19 +116,24 @@ class UDPPublisher(Node):
 		if self.mission_status == MOVING:
 			msg = Twist()
 
-			if keyboard.is_pressed('w'):
+			new_speed = 0
+			delta = 0
+
+			if 'w' in self.pressed_keys:
 				new_speed = SPEED_LIMIT
-			elif keyboard.is_pressed('s'):
+			elif 's' in self.pressed_keys:
 				new_speed = -SPEED_LIMIT
 
-			if keyboard.is_pressed('a'):
+			if 'a' in self.pressed_keys:
 				delta = MAX_STEER
-			elif keyboard.is_pressed('d'):
+			elif 'd' in self.pressed_keys:
 				delta = -MAX_STEER
 
-			if keyboard.is_pressed('p'):
+			if 'p' in self.pressed_keys:
 				self.mission_status = ABORT
 				return
+		
+			delta = math.radians(delta)
 
 			msg.linear.x = -new_speed * math.sin(delta)
 			msg.linear.y = new_speed * math.cos(delta)
