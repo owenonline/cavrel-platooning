@@ -1,24 +1,12 @@
-import random
 import rospy
-import struct
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float64
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
-import socket
 from time import sleep, time
-from datetime import datetime
-import json
 import threading
-import numpy as np
 import math
-import pickle
-from collections import defaultdict
-from scipy.optimize import minimize, minimize_scalar, least_squares
-from scipy.interpolate import CubicSpline
-import pyproj
-import argparse
 from pynput import keyboard
 
 # set up mission states
@@ -34,7 +22,7 @@ MAX_STEER = 30
 
 
 class UDPPublisher:
-    def __init__(self, car_number, broadcast_interval, drop_rate, center_lat, center_lon, center_orientation, track_name):
+    def __init__(self):
         rospy.init_node('udp_publisher')
 
         self.mission_status = MISSIONSTART
@@ -139,17 +127,5 @@ class UDPPublisher:
             self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
-    args = parser.parse_args()
-    with open(args.track_path, 'r') as f:
-        track = json.load(f)
-
-    car_number = args.car_number
-    broadcast_interval = args.broadcast_int
-    drop_rate = args.drop_rate
-    track_name = track['name']
-    center_lat = track['center']['lat']
-    center_lon = track['center']['lon']
-    center_orientation = DUE_EAST
-
-    udp_publisher = UDPPublisher(car_number, broadcast_interval, drop_rate, center_lat, center_lon, center_orientation, track_name)
+    udp_publisher = UDPPublisher()
     rospy.spin()
