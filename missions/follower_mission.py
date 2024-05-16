@@ -25,6 +25,7 @@ import json
 import threading
 import numpy as np
 import math
+import os
 import argparse
 
 # set up mission states
@@ -39,7 +40,7 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.3
+K = 0.05
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 WHEELBASE = 0.48
@@ -53,7 +54,7 @@ geodesic = pyproj.Geod(ellps='WGS84')
 parser = argparse.ArgumentParser()
 parser.add_argument('--track_path', type=str, default="missions/tracks/bus_loop_large.json")
 parser.add_argument('--broadcast_int', type=float, default=0.1)
-parser.add_argument('--drop_rate', type=float, default=0.0)
+parser.add_argument('--drop_rate', type=float, default=0.0) # try up thru 0.6
 parser.add_argument('--car_number', type=int, default=1)
 
 class UDPPublisher(Node):
@@ -71,6 +72,8 @@ class UDPPublisher(Node):
 
 		# set up starting vars
 		self.datapoints = []
+		self.lines = []
+		self.closest = []
 		self.mission_status = MISSIONSTART
 		self.telem = None
 		self.satellite = None
@@ -247,89 +250,96 @@ class UDPPublisher(Node):
 		accel = KPV*(v - v_ego) + KDV*(v - v_ego)/self.broadcast_interval
 		return accel
 	
-	# def distance_to_line(self, x0, y0, dx, dy, x, y):
-	# 	"""Computes the distance between a point and a line."""
-	# 	lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
-	# 	closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
-	# 	distance = np.linalg.norm(closest_point - np.array([x, y]))
-	# 	distance = np.nan_to_num(distance)
-	# 	return distance, closest_point
+	def distance_to_line(self, x0, y0, dx, dy, x, y):
+		"""Computes the distance between a point and a line."""
+		lambda_val = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
+		closest_point = np.array([x0 + lambda_val * dx, y0 + lambda_val * dy])
+		distance = np.linalg.norm(closest_point - np.array([x, y]))
+		distance = np.nan_to_num(distance)
+		return distance, closest_point
  
-	# def heading_controller(self, head_ego, v_ego, target_head):
-	# 	"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car.
-	# 	CURRENTLY APPROXIMATES CROSS-TRACK ERROR WITH A STRAIGHT LINE FIT."""
-	# 	points = []
-	# 	initial_guess = None
-
-	# 	# get the local coordinates of the last two locations of all other cars
-	# 	for i in range(self.car):
-	# 		(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
-	# 		x1, y1 = self.coords_to_local(lat1, lon1)
-	# 		x2, y2 = self.coords_to_local(lat2, lon2)
-	# 		points.append((x1, y1))
-	# 		points.append((x2, y2))
-
-	# 		if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
-	# 			initial_guess = [x2, y2, x2 - x1, y2 - y1]
-
-	# 	# get the local coordinates of the ego car
-	# 	lat1, lon1 = self.satellite.latitude, self.satellite.longitude
-	# 	ex1, ey1 = self.coords_to_local(lat1, lon1)
-
-	# 	def distances_to_line(params, points):
-	# 		x0, y0, dx, dy = params
-	# 		distances = []
-	# 		for (x, y) in points:
-	# 			distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
-	# 			distances.append(distance)
-	# 		return distances
-		
-	# 	# compute a line of best fit using the last 2 positions of all other cars
-	# 	# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
-	# 	# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
-	# 	result = least_squares(distances_to_line, initial_guess, args=(points,))
-
-	# 	x0_opt, y0_opt, dx_opt, dy_opt = result.x
-	# 	heading_diff = target_head - head_ego
-
-	# 	dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
-	# 	cte = np.arctan2(K*dist, v_ego)
-	# 	# cte = np.rad2deg(cte)
-
-	# 	steer = heading_diff + cte
-	# 	return steer
-	
 	def heading_controller(self, head_ego, v_ego, target_head):
-		"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
+		"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car.
+		CURRENTLY APPROXIMATES CROSS-TRACK ERROR WITH A STRAIGHT LINE FIT."""
 		points = []
+		initial_guess = None
 
 		# get the local coordinates of the last two locations of all other cars
 		for i in range(self.car):
-			for point in self.car_positions[i]:
-				(lat, lon, _, _) = point
-				x, y = self.coords_to_local(lat, lon)
-				points.append((x, y))
+			(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
+			x1, y1 = self.coords_to_local(lat1, lon1)
+			x2, y2 = self.coords_to_local(lat2, lon2)
+			points.append((x1, y1))
+			points.append((x2, y2))
 
-		points.sort(key=lambda point: point[0])
-		xs, ys = zip(*points)
+			if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
+				initial_guess = [x2, y2, x2 - x1, y2 - y1]
 
-		cs = CubicSpline(xs, ys)
+		# get the local coordinates of the ego car
+		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
+		ex1, ey1 = self.coords_to_local(lat1, lon1)
 
-		def distance_to_spline(x):
-			ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
-			spline_y = cs(x)
-			return np.sqrt((ex - x)**2 + (ey - spline_y)**2)
-
-		res = minimize_scalar(distance_to_spline, bounds=(min(xs), max(xs)), method='bounded')
-		closest_x = res.x
-		dist = distance_to_spline(closest_x)
-
-		heading_diff = target_head - head_ego
-		cte = np.arctan2(K * dist, v_ego)
-		cte = np.rad2deg(cte)
+		def distances_to_line(params, points):
+			x0, y0, dx, dy = params
+			distances = []
+			for (x, y) in points:
+				distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
+				distances.append(distance)
+			return distances
 		
+		# compute a line of best fit using the last 2 positions of all other cars
+		# this allows us to accurately calculate the cross track error between where we are and where we should be to be most directly in line with the other vehicles
+		# NOTE: this will start to break as you get more cars going around a curve, at which point we should switch to a curved line of best fit
+		result = least_squares(distances_to_line, initial_guess, args=(points,))
+
+		x0_opt, y0_opt, dx_opt, dy_opt = result.x
+		heading_diff = target_head - head_ego
+
+		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
+		cte = np.arctan2(K*dist, v_ego)
+		# cte = np.rad2deg(cte)
+
 		steer = heading_diff + cte
 		return steer
+	
+	# def heading_controller(self, head_ego, v_ego, target_head):
+	# 	"""Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
+	# 	points = []
+
+	# 	# get the local coordinates of the last two locations of all other cars
+	# 	for i in range(self.car):
+	# 		for point in self.car_positions[i]:
+	# 			(lat, lon, _, _) = point
+	# 			x, y = self.coords_to_local(lat, lon)
+	# 			points.append((x, y))
+
+	# 	points.sort(key=lambda point: point[0])
+	# 	xs, ys = zip(*points)
+
+	# 	cs = CubicSpline(xs, ys)
+
+	# 	def distance_to_spline(x):
+	# 		ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
+	# 		spline_y = cs(x)
+	# 		return np.sqrt((ex - x)**2 + (ey - spline_y)**2)
+
+	# 	res = minimize_scalar(distance_to_spline, bounds=(min(xs), max(xs)), method='bounded')
+	# 	closest_x = res.x
+	# 	closest_y = cs(closest_x)
+	# 	dist = distance_to_spline(closest_x)
+
+	# 	heading_diff = target_head - head_ego
+	# 	cte = np.arctan2(K * dist, v_ego)
+	# 	cte = np.rad2deg(cte)
+
+	# 	line_x = np.linspace(min(xs)-2, max(xs)+2, 300)
+	# 	line_y = cs(line_x)
+	# 	line = (line_x, line_y)
+	# 	self.lines.append(line)
+	# 	self.closest.append((closest_x, closest_y))
+		
+	# 	steer = heading_diff + cte
+	# 	return steer
 
 	def mission_timer_callback(self):
 		"""Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
@@ -409,9 +419,18 @@ class UDPPublisher(Node):
 
 			now = datetime.now()
 			formatted_date = now.strftime('%H_%M_%d')
-			with open(f"missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}.pkl", "wb") as f:
+			
+			with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}.pkl", "wb") as f:
 				pickle.dump(self.datapoints, f)
 			self.datapoints = None
+
+			with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}_LINE.pkl", "wb") as f:
+				pickle.dump(self.lines, f)
+			self.lines = None
+			
+			with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}_CLOSEST.pkl", "wb") as f:
+				pickle.dump(self.closest, f)
+			self.closest = None
 
 			emergency_disarm_req = CommandLong.Request()
 			emergency_disarm_req.broadcast = False
