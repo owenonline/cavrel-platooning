@@ -1,4 +1,7 @@
 import rospy
+import struct
+import socket
+import json
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
@@ -7,7 +10,6 @@ from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
 from time import sleep, time
 import threading
 import math
-from pynput import keyboard
 
 # set up mission states
 MISSIONSTART = 0
@@ -28,6 +30,14 @@ class UDPPublisher:
         self.mission_status = MISSIONSTART
         self.pressed_keys = set()
 
+        self.listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.listen_sock.bind(('', 5004))
+        group = socket.inet_aton('224.0.0.1')
+        mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+        self.listen_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        rospy.Timer(rospy.Duration(0.01), self.listen_timer_callback)
+
         # publisher setup
         self.publisher = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=20)
 
@@ -44,6 +54,11 @@ class UDPPublisher:
         self.move_thread = threading.Thread(target=self.movement_callback)
         self.move_thread.daemon = True
         self.move_thread.start()
+
+    def listen_timer_callback(self, event):
+        data, _ = self.listen_sock.recvfrom(1024)
+        data_json = json.loads(data.decode())
+        self.pressed_keys = set(data_json['keys'])
 
     def movement_callback(self):
         """Publishes movement commands at the rate required to keep the vehicle armed"""
@@ -76,18 +91,6 @@ class UDPPublisher:
             self.publisher.publish(msg)
             self.rate.sleep()
 
-    def on_press(self, key):
-        try:
-            self.pressed_keys.add(key.char)
-        except AttributeError:
-            pass
-
-    def on_release(self, key):
-        try:
-            self.pressed_keys.remove(key.char)
-        except AttributeError:
-            pass
-
     def mission_timer_callback(self, event):
         """Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
 
@@ -109,13 +112,6 @@ class UDPPublisher:
                     self.mission_status = MOVING
             except rospy.ServiceException as e:
                 print("Service call failed: %s" % e)
-        elif self.mission_status == MOVING:
-            print("Moving")
-            self.key_listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
-            self.key_listener.start()
-        elif self.mission_status == DISARMING:
-            msg = Twist()
-            self.publisher.publish(msg)
         elif self.mission_status == MISSIONCOMPLETE:
             rospy.signal_shutdown("Mission completed successfully.")
         elif self.mission_status == ABORT:
@@ -123,7 +119,6 @@ class UDPPublisher:
 
             self.datapoints = None
             self.killswitch_service(False, 400, 0, 0.0, 21196.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-            self.key_listener.stop()
             self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
