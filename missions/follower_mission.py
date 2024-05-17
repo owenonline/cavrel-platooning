@@ -129,8 +129,16 @@ class UDPPublisher(Node):
 		"""Kills the mission if the user presses ENTER."""
 
 		while True:
-			input()
-			self.mission_status = ABORT
+			z = input()
+			if z == 'k':
+				self.mission_status = ABORT
+			elif z == ' ':
+				disarm_req = CommandBool.Request()
+				disarm_req.value = False
+				disarm_future = self.arming_client.call_async(disarm_req)
+				disarm_future.add_done_callback(self.disarm_callback)
+
+				self.mission_status = DISARMING
 
 	def broadcast_timer_callback(self):
 		"""Broadcasts the car's current GPS position and heading to all other cars in the network, dropping packets at a specified rate."""
@@ -433,6 +441,19 @@ class UDPPublisher(Node):
 
 			self.publisher.publish(msg)
 			return
+		
+		if self.mission_status == DISARMING:
+			msg = Twist()
+			msg.linear.x = 0.0
+			msg.linear.y = 0.0
+			msg.linear.z = 0.0
+
+			msg.angular.x = 0.0
+			msg.angular.y = 0.0
+			msg.angular.z = 0.0
+			
+			self.publisher.publish(msg) # continue publishing stop messages until disarmed
+			return
 	
 		if self.mission_status == MISSIONCOMPLETE:
 			print("MISSION COMPLETE")
@@ -486,6 +507,10 @@ class UDPPublisher(Node):
 		print("...armed, moving")
 		self.start_time = time()
 		self.mission_status = MOVING
+
+	def disarm_callback(self, future):
+		print("...disarmed")
+		self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
 	args = parser.parse_args()
