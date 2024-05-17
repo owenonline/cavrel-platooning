@@ -198,7 +198,7 @@ class UDPPublisher(Node):
 				targets.append((x2, y2, heading, velocity, self.car - i, accel))
 
 		# save the current state for logging later
-		tmp = [(x, y, h, v, a) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, self.accel)]
+		tmp = [(x, y, h, v, a) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, (self.accel.x, self.accel.y))]
 		self.datapoints.append(tmp)
 
 		def minimization_objective(params):
