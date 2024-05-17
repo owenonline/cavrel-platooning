@@ -92,10 +92,6 @@ class UDPPublisher:
         # publisher setup
         self.publisher = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=20)
 
-        rospy.Timer(rospy.Duration(self.broadcast_interval), self.broadcast_timer_callback)
-        rospy.Timer(rospy.Duration(LISTEN_INTERVAL), self.listen_timer_callback)
-        rospy.Timer(rospy.Duration(self.broadcast_interval), self.mission_timer_callback)
-
         rospy.wait_for_service('/mavros/set_mode')
         rospy.wait_for_service('/mavros/cmd/arming')
         rospy.wait_for_service('/mavros/cmd/command')
@@ -113,12 +109,20 @@ class UDPPublisher:
         self.stop_thread.daemon = True
         self.stop_thread.start()
 
+        rospy.Timer(rospy.Duration(self.broadcast_interval), self.broadcast_timer_callback)
+        rospy.Timer(rospy.Duration(LISTEN_INTERVAL), self.listen_timer_callback)
+        rospy.Timer(rospy.Duration(self.broadcast_interval), self.mission_timer_callback)
+
     def listen_for_stop(self):
         """Kills the mission if the user presses ENTER."""
         
         while True:
             raw_input()
-            self.mission_status = ABORT
+            self.mission_status = DISARMING
+            response = self.arming_service(False)
+            if response.success:
+                print("Disarmed")
+                self.mission_status = MISSIONCOMPLETE
 
     def broadcast_timer_callback(self, event):
         """Broadcasts the car's current GPS position and heading to all other cars in the network, dropping packets at a specified rate."""
