@@ -184,9 +184,11 @@ class UDPPublisher(Node):
 		ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
 
 		targets = []
+		error_count = 0
 		for i in range(self.car):
 			if len(self.car_positions[i]) < 2:
 				targets.append((ex, ey, eh, 0, self.car - i, (0,0)))
+				error_count += 1
 			else:
 				(lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
 
@@ -238,6 +240,9 @@ class UDPPublisher(Node):
 			res = minimize(minimization_objective, guess, method='SLSQP', bounds=bounds)
 			if res.fun < best_score:
 				best = res
+
+		if error_count == self.car:
+			best.x = (0, self.heading.data)
 
 		return best
 	
