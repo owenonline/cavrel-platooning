@@ -179,21 +179,25 @@ class UDPPublisher(Node):
 	def get_goal_motion(self):
 		"""Calculates the target speed and heading for the ego vehicle based on the positions of the other cars in the network."""
 
-		targets = []
-		for i in range(self.car):
-			(lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
-
-			x1, y1 = self.coords_to_local(lat1, lon1)
-			x2, y2 = self.coords_to_local(lat2, lon2)
-
-			velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
-			heading = head2
-			targets.append((x2, y2, heading, velocity, self.car - i, accel))
-
-		# save the current state for logging later
 		ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
 		eh = self.heading.data
 		ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
+
+		targets = []
+		for i in range(self.car):
+			if len(self.car_positions[i]) < 2:
+				targets.append((ex, ey, eh, 0, self.car - i, (0,0)))
+			else:
+				(lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
+
+				x1, y1 = self.coords_to_local(lat1, lon1)
+				x2, y2 = self.coords_to_local(lat2, lon2)
+
+				velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
+				heading = head2
+				targets.append((x2, y2, heading, velocity, self.car - i, accel))
+
+		# save the current state for logging later
 		tmp = [(x, y, h, v, a) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, self.accel)]
 		self.datapoints.append(tmp)
 
@@ -205,7 +209,7 @@ class UDPPublisher(Node):
 			total_cost = 0
 			for target in targets:
 				# goal follow distance accounts for following distance and the lengths of the cars between the ego vehicle and the target vehicle
-				x_target, y_target, head_target, v_target, position = target
+				x_target, y_target, head_target, v_target, position, _ = target
 				head_target = np.radians(head_target)
 				goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1) # meters behind the target car
 
@@ -225,7 +229,7 @@ class UDPPublisher(Node):
 			return total_cost
 		
 		bounds = Bounds([0, -360], [10, 360])
-		_, _, head, v, _ = targets[0]
+		_, _, head, v, _, _ = targets[0]
 
 		guesses = [[0, head], [v, head], [5, head]]
 		best_score = np.inf
@@ -272,6 +276,9 @@ class UDPPublisher(Node):
 
 		# get the local coordinates of the last two locations of all other cars
 		for i in range(self.car):
+			if len(self.car_positions[i]) < 2:
+				continue
+
 			(lat1, lon1, _, _, _), (lat2, lon2, _, _, _) = self.car_positions[i][-2:]
 			x1, y1 = self.coords_to_local(lat1, lon1)
 			x2, y2 = self.coords_to_local(lat2, lon2)
@@ -280,6 +287,10 @@ class UDPPublisher(Node):
 
 			if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
 				initial_guess = [x1, y1, x2 - x1, y2 - y1]
+
+		# if no points received, steer is 0
+		if len(points) == 0 or initial_guess is None:
+			return 0
 
 		# get the local coordinates of the ego car
 		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
