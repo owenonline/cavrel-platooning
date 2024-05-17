@@ -62,6 +62,7 @@ class UDPPublisher:
 
         # set starting vars
         self.datapoints = []
+        self.iteration_error_count = 0
         self.mission_status = MISSIONSTART
         self.telem = None
         self.satellite = None
@@ -172,11 +173,13 @@ class UDPPublisher:
         ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
 
         targets = []
+        self.iteration_error_count = 0
         for i in range(self.car):
             # if no points received, say that the vehicle is exactly where the ego vehicle is and not moving
             # so the optimizded doesn't do anything either
             if len(self.car_positions[i]) < 2:
                 targets.append((ex, ey, eh, 0, self.car - i, (0,0)))
+                self.iteration_error_count += 1
             else:
                 (lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
 
@@ -332,8 +335,9 @@ class UDPPublisher:
             new_speed = min(new_speed, SPEED_LIMIT)
             delta_rad = np.radians(delta)
             msg = Twist()
-            msg.linear.x = -new_speed * math.sin(delta_rad)
-            msg.linear.y = new_speed * math.cos(delta_rad)
+            if not self.iteration_error_count == self.car:
+                msg.linear.x = -new_speed * math.sin(delta_rad)
+                msg.linear.y = new_speed * math.cos(delta_rad)
             # self.publisher.publish(msg)
             print(msg.linear.x, msg.linear.y)
             self.movement_message = msg

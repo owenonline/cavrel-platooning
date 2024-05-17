@@ -74,7 +74,7 @@ class UDPPublisher(Node):
 		self.datapoints = []
 		self.lines = []
 		self.closest = []
-		self.iteration_error_count = 0
+		self.iteration_error_count = 0 # counts how many of the vehicles in front of the ego vehicle have not sent a position update at all. This lets me start the script before i turn the other cars on so they can start moving at the same time when I turn the beacon on
 		self.mission_status = MISSIONSTART
 		self.telem = None
 		self.satellite = None
