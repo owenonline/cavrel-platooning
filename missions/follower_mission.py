@@ -40,7 +40,7 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.05
+K = 0.2
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 WHEELBASE = 0.48
@@ -266,14 +266,14 @@ class UDPPublisher(Node):
 
 		# get the local coordinates of the last two locations of all other cars
 		for i in range(self.car):
-			(lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
+			(lat1, lon1, _, _), (lat2, lon2, _, _) = self.car_positions[i]
 			x1, y1 = self.coords_to_local(lat1, lon1)
 			x2, y2 = self.coords_to_local(lat2, lon2)
 			points.append((x1, y1))
 			points.append((x2, y2))
 
 			if i == self.car - 1: # we use the car closest to the ego vehicle as the initial guess for the line to ensure convergence
-				initial_guess = [x2, y2, x2 - x1, y2 - y1]
+				initial_guess = [x1, y1, x2 - x1, y2 - y1]
 
 		# get the local coordinates of the ego car
 		lat1, lon1 = self.satellite.latitude, self.satellite.longitude
@@ -297,7 +297,7 @@ class UDPPublisher(Node):
 
 		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
 		cte = np.arctan2(K*dist, v_ego)
-		# cte = np.rad2deg(cte)
+		cte = np.rad2deg(cte)
 
 		steer = heading_diff + cte
 		return steer

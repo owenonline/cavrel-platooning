@@ -16,7 +16,6 @@ import math
 import pickle
 from collections import defaultdict
 from scipy.optimize import minimize, minimize_scalar, least_squares
-from scipy.interpolate import CubicSpline
 import pyproj
 import argparse
 
@@ -32,7 +31,7 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.43
+K = 0.3
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 CAR_LENGTH = 0.779
@@ -115,9 +114,8 @@ class UDPPublisher:
         """Kills the mission if the user presses ENTER."""
         
         while True:
-            command = raw_input()
-            if command.upper() == 'K':
-                self.mission_status = ABORT
+            raw_input()
+            self.mission_status = ABORT
 
     def broadcast_timer_callback(self, event):
         """Broadcasts the car's current GPS position and heading to all other cars in the network, dropping packets at a specified rate."""
@@ -273,40 +271,9 @@ class UDPPublisher:
 
         dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
         cte = np.arctan2(K*dist, v_ego)
+        cte = np.rad2deg(cte)
         steer = heading_diff + cte
         return steer
-
-    # def heading_controller(self, head_ego, v_ego, target_head):
-    #     """Stanley controller for heading control. Computes the cross track error and heading difference between the ego car and the target car."""
-    #     points = []
-
-    #     # get the local coordinates of the last two locations of all other cars
-    #     for i in range(self.car):
-    #         for point in self.car_positions[i]:
-    #             (lat, lon, _, _) = point
-    #             x, y = self.coords_to_local(lat, lon)
-    #             points.append((x, y))
-
-    #     points.sort(key=lambda point: point[0])
-    #     xs, ys = zip(*points)
-
-    #     cs = CubicSpline(xs, ys)
-
-    #     def distance_to_spline(x):
-    #         ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
-    #         spline_y = cs(x)
-    #         return np.sqrt((ex - x)**2 + (ey - spline_y)**2)
-
-    #     res = minimize_scalar(distance_to_spline, bounds=(min(xs), max(xs)), method='bounded')
-    #     closest_x = res.x
-    #     dist = distance_to_spline(closest_x)
-
-    #     heading_diff = target_head - head_ego
-    #     cte = np.arctan2(K * dist, v_ego)
-    #     cte = np.rad2deg(cte)
-        
-    #     steer = heading_diff + cte
-    #     return steer
 
     def mission_timer_callback(self, event):
         """Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
@@ -327,6 +294,8 @@ class UDPPublisher:
                 if response.success:
                     print("Moving")
                     self.mission_status = MOVING
+                else:
+                    print(response)
             except rospy.ServiceException as e:
                 print("Service call failed: %s" % e)
         elif self.mission_status == MOVING:
