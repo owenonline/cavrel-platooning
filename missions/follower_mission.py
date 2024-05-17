@@ -74,6 +74,7 @@ class UDPPublisher(Node):
 		self.datapoints = []
 		self.lines = []
 		self.closest = []
+		self.iteration_error_count = 0
 		self.mission_status = MISSIONSTART
 		self.telem = None
 		self.satellite = None
@@ -184,11 +185,11 @@ class UDPPublisher(Node):
 		ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
 
 		targets = []
-		error_count = 0
+		self.iteration_error_count = 0
 		for i in range(self.car):
 			if len(self.car_positions[i]) < 2:
 				targets.append((ex, ey, eh, 0, self.car - i, (0,0)))
-				error_count += 1
+				self.iteration_error_count += 1
 			else:
 				(lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
 
@@ -240,9 +241,6 @@ class UDPPublisher(Node):
 			res = minimize(minimization_objective, guess, method='SLSQP', bounds=bounds)
 			if res.fun < best_score:
 				best = res
-
-		if error_count == self.car:
-			best.x = (0, self.heading.data)
 
 		return best
 	
@@ -415,6 +413,9 @@ class UDPPublisher(Node):
 			delta = self.heading_controller(head_ego, v_ego, head)
 			new_speed = v_ego + vel_accel*self.broadcast_interval
 			new_speed = min(new_speed, SPEED_LIMIT)
+
+			if self.iteration_error_count == self.car:
+				new_speed = 0
 
 			print(f"setting speed {new_speed} m/s and heading delta {delta} | Current speed and heading: {v_ego} {head_ego}\n")
 
