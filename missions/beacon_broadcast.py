@@ -147,7 +147,7 @@ if __name__ == '__main__':
                 continue
 
             # send the packet
-            msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT})
+            msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": None})
             print(msg)
             msg = msg.encode()
             sock.sendto(msg, ('224.0.0.1', 5004))

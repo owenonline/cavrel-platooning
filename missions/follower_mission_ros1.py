@@ -1,9 +1,9 @@
 import random
 import rospy
 import struct
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, TwistStamped
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import NavSatFix, Imu
 from std_msgs.msg import Float64
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL, CommandLong
 import socket
@@ -66,6 +66,7 @@ class UDPPublisher:
         self.telem = None
         self.satellite = None
         self.heading = None
+        self.accel = None
         self.car_positions = defaultdict(list)
         self.movement_message = Twist()
 
@@ -85,6 +86,7 @@ class UDPPublisher:
         self.telem_subscriber = rospy.Subscriber('/mavros/global_position/local', Odometry, self.telem_listener_callback)
         self.satellite_subscriber = rospy.Subscriber('/mavros/global_position/global', NavSatFix, self.satellite_listener_callback)
         self.heading_subscriber = rospy.Subscriber('/mavros/global_position/compass_hdg', Float64, self.heading_listener_callback)
+        self.accel_subscriber = rospy.Subscriber('/mavros/imu/data', Imu, self.accel_listener_callback)
 
         # publisher setup
         self.publisher = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=20)
@@ -123,7 +125,7 @@ class UDPPublisher:
         if self.satellite is None or self.heading is None or (self.drop_rate > 0 and random.random() < self.drop_rate):
             return
 
-        msg = json.dumps({"head": self.heading.data, "car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT})
+        msg = json.dumps({"head": self.heading.data, "car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT, "accel": self.accel})
         msg = msg.encode()
         self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
 
@@ -142,7 +144,7 @@ class UDPPublisher:
         if data_json['abort']:
             self.mission_status = ABORT
         if data_json['car'] <= self.car:
-            position_update = (data_json['lat'], data_json['lon'], data_json['head'], data_json['time'])
+            position_update = (data_json['lat'], data_json['lon'], data_json['head'], data_json['time'], data_json['accel'])
             self.car_positions[data_json['car']].append(position_update)
             self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-4:]
 
@@ -158,24 +160,28 @@ class UDPPublisher:
         """Saves the latest heading message"""
         self.heading = msg
 
+    def accel_listener_callback(self, msg):
+        """Saves the latest acceleration message"""
+        self.accel = msg.linear_acceleration
+
     def get_goal_motion(self):
         """Calculates the target speed and heading for the ego vehicle based on the positions of the other cars in the network."""
 
         targets = []
         for i in range(self.car):
-            (lat1, lon1, head1, time1), (lat2, lon2, head2, time2) = self.car_positions[i][-2:]
+            (lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
 
             x1, y1 = self.coords_to_local(lat1, lon1)
             x2, y2 = self.coords_to_local(lat2, lon2)
 
             velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
             heading = head2
-            targets.append((x2, y2, heading, velocity, self.car - i))
+            targets.append((x2, y2, heading, velocity, self.car - i, accel))
 
         ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
         eh = self.heading.data
         ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
-        self.datapoints.append([(x, y, h, v) for x, y, h, v, _ in targets] + [(ex, ey, eh, ev)])
+        self.datapoints.append([(x, y, h, v, a) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, self.accel)])
 
         def minimization_objective(params):
             v, head = params
