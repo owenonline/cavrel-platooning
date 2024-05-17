@@ -387,6 +387,9 @@ class UDPPublisher(Node):
 			return
 		
 		if self.mission_status == MOVING:
+			if self.satellite is None or self.telem is None or self.heading is None:
+				return
+
 			msg = Twist()
 
 			res = self.get_goal_motion()				
