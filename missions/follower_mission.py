@@ -137,7 +137,7 @@ class UDPPublisher(Node):
 		if self.satellite is None or self.heading is None or (self.drop_rate > 0 and random.random() < self.drop_rate):
 			return
 
-		msg = json.dumps({"head": self.heading.data,"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT, "accel": self.accel})
+		msg = json.dumps({"head": self.heading.data,"car": self.car, "lat": self.satellite.latitude, "lon": self.satellite.longitude, "time": time(), "abort": self.mission_status == ABORT, "accel": (self.accel.x, self.accel.y)})
 		msg = msg.encode()
 
 		self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
