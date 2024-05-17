@@ -31,13 +31,13 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.3
+K = 0.2
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0
 DUE_EAST = 90
-SPEED_LIMIT = 3.0
+SPEED_LIMIT = 2.2
 geodesic = pyproj.Geod(ellps='WGS84')
 
 # set up args
@@ -167,20 +167,26 @@ class UDPPublisher:
     def get_goal_motion(self):
         """Calculates the target speed and heading for the ego vehicle based on the positions of the other cars in the network."""
 
-        targets = []
-        for i in range(self.car):
-            (lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
-
-            x1, y1 = self.coords_to_local(lat1, lon1)
-            x2, y2 = self.coords_to_local(lat2, lon2)
-
-            velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
-            heading = head2
-            targets.append((x2, y2, heading, velocity, self.car - i, accel))
-
         ex, ey = self.coords_to_local(self.satellite.latitude, self.satellite.longitude)
         eh = self.heading.data
         ev = np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2)
+
+        targets = []
+        for i in range(self.car):
+            # if no points received, say that the vehicle is exactly where the ego vehicle is and not moving
+            # so the optimizded doesn't do anything either
+            if len(self.car_positions[i]) < 2:
+                targets.append((ex, ey, eh, 0, self.car - i, (0,0)))
+            else:
+                (lat1, lon1, head1, time1, _), (lat2, lon2, head2, time2, accel) = self.car_positions[i][-2:]
+
+                x1, y1 = self.coords_to_local(lat1, lon1)
+                x2, y2 = self.coords_to_local(lat2, lon2)
+
+                velocity = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)/(time2 - time1)
+                heading = head2
+                targets.append((x2, y2, heading, velocity, self.car - i, accel))
+
         self.datapoints.append([(x, y, h, v, a) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, self.accel)])
 
         def minimization_objective(params):
@@ -190,7 +196,7 @@ class UDPPublisher:
 
             total_cost = 0
             for target in targets:
-                x_target, y_target, head_target, v_target, position = target
+                x_target, y_target, head_target, v_target, position, _ = target
                 head_target = np.radians(head_target)
                 goal_follow_distance = FOLLOW_DISTANCE*position + CAR_LENGTH*(position - 1)
 
@@ -207,7 +213,7 @@ class UDPPublisher:
             return total_cost
 
         bounds = [(0, 10), (-360, 360)]
-        _, _, head, v, _ = targets[0]
+        _, _, head, v, _, _ = targets[0]
         guesses = [[0, head], [v, head], [5, head]]
         best_score = np.inf
         best = None
@@ -251,7 +257,10 @@ class UDPPublisher:
         points = []
         initial_guess = None
         for i in range(self.car):
-            (lat1, lon1, _, _), (lat2, lon2, _, _)= self.car_positions[i][-2:]
+            if len(self.car_positions[i]) < 2:
+                continue
+
+            (lat1, lon1, _, _, _), (lat2, lon2, _, _, _)= self.car_positions[i][-2:]
             x1, y1 = self.coords_to_local(lat1, lon1)
             x2, y2 = self.coords_to_local(lat2, lon2)
             points.append((x1, y1))
@@ -259,6 +268,10 @@ class UDPPublisher:
 
             if i == self.car - 1:
                 initial_guess = [x2, y2, x2 - x1, y2 - y1]
+
+        # if no points received, steer is 0
+        if len(points) == 0 or initial_guess is None:
+            return 0
 
         lat1, lon1 = self.satellite.latitude, self.satellite.longitude
         ex1, ey1 = self.coords_to_local(lat1, lon1)
