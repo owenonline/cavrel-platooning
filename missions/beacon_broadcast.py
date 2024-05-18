@@ -120,7 +120,9 @@ def calculate_track(straights, turns, broadcast_interval):
     # full_track = []
     # for straight, turn in zip(straight_points, turn_points):
     #     full_track += straight + turn
-    full_track = [s for straight in straight_points for s in straight]
+    full_track = []
+    for straight in straight_points:
+        full_track += straight
 
     return full_track
 
@@ -141,17 +143,16 @@ if __name__ == '__main__':
     stop_thread.daemon = True
     stop_thread.start()
 
-    while True:
-        for (lat, lon, head) in full_track:
-            # randomly drop packets
-            if args.drop_rate > 0 and random.random() < args.drop_rate:
-                continue
+    for (lat, lon, head) in full_track:
+        # randomly drop packets
+        if args.drop_rate > 0 and random.random() < args.drop_rate:
+            continue
 
-            # send the packet
-            msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": (0,0)})
-            print(msg)
-            msg = msg.encode()
-            sock.sendto(msg, ('224.0.0.1', 5004))
+        # send the packet
+        msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": (0,0)})
+        print(msg)
+        msg = msg.encode()
+        sock.sendto(msg, ('224.0.0.1', 5004))
 
-            # wait for next broadcast interval
-            sleep(args.broadcast_int)
+        # wait for next broadcast interval
+        sleep(args.broadcast_int)
