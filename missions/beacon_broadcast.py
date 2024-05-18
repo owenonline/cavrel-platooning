@@ -108,18 +108,19 @@ def calculate_track(straights, turns, broadcast_interval):
         straight_points.append(segs)
         bearings.append(bearing)
 
-    bearings = [(bearings[i], bearings[(i+1)%len(bearings)]) for i in range(len(bearings))]
-    turn_points = []
-    for turn, (start_bearing, end_bearing) in zip(turns, bearings):
-        seg_dist = broadcast_interval*turn['speed']
-        start = (turn['start']['lat'], turn['start']['lon'])
-        end = (turn['end']['lat'], turn['end']['lon'])
-        segs = calculate_turn(start, start_bearing, end, end_bearing, seg_dist, turn['direction'])
-        turn_points.append(segs)
+    # bearings = [(bearings[i], bearings[(i+1)%len(bearings)]) for i in range(len(bearings))]
+    # turn_points = []
+    # for turn, (start_bearing, end_bearing) in zip(turns, bearings):
+    #     seg_dist = broadcast_interval*turn['speed']
+    #     start = (turn['start']['lat'], turn['start']['lon'])
+    #     end = (turn['end']['lat'], turn['end']['lon'])
+    #     segs = calculate_turn(start, start_bearing, end, end_bearing, seg_dist, turn['direction'])
+    #     turn_points.append(segs)
 
-    full_track = []
-    for straight, turn in zip(straight_points, turn_points):
-        full_track += straight + turn
+    # full_track = []
+    # for straight, turn in zip(straight_points, turn_points):
+    #     full_track += straight + turn
+    full_track = [s for straight in straight_points for s in straight]
 
     return full_track
 
@@ -147,7 +148,7 @@ if __name__ == '__main__':
                 continue
 
             # send the packet
-            msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": None})
+            msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": (0,0)})
             print(msg)
             msg = msg.encode()
             sock.sendto(msg, ('224.0.0.1', 5004))

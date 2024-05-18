@@ -130,7 +130,12 @@ class UDPPublisher(Node):
 				delta = -MAX_STEER
 
 			if 'p' in self.pressed_keys:
-				self.mission_status = ABORT
+				disarm_req = CommandBool.Request()
+				disarm_req.value = False
+				disarm_future = self.arming_client.call_async(disarm_req)
+				disarm_future.add_done_callback(self.disarm_callback)
+
+				self.mission_status = DISARMING
 				return
 		
 			delta = math.radians(delta)
@@ -151,6 +156,18 @@ class UDPPublisher(Node):
 			print("MISSION COMPLETE")
 			self.destroy_node()
 			rclpy.shutdown()
+
+		if self.mission_status == DISARMING:
+			msg = Twist()
+
+			msg.linear.x = 0.0
+			msg.linear.y = 0.0
+			msg.linear.z = 0.0
+			msg.angular.x = 0.0
+			msg.angular.y = 0.0
+			msg.angular.z = 0.0
+			self.publisher.publish(msg)
+			return
 		
 		# if the mission is aborted, turn off all motors immediately.
 		if self.mission_status == ABORT:
@@ -184,6 +201,10 @@ class UDPPublisher(Node):
 		print("...armed, moving")
 		self.start_time = time()
 		self.mission_status = MOVING
+
+	def disarm_callback(self, future):
+		print("...disarmed")
+		self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
 	rclpy.init(args=None)

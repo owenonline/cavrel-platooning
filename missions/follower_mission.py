@@ -130,6 +130,12 @@ class UDPPublisher(Node):
 
 		while True:
 			input()
+			now = datetime.now()
+			formatted_date = now.strftime('%H_%M_%d')
+			
+			with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}.pkl", "wb") as f:
+				pickle.dump(self.datapoints, f)
+			self.datapoints = None
 			disarm_req = CommandBool.Request()
 			disarm_req.value = False
 			disarm_future = self.arming_client.call_async(disarm_req)
@@ -467,13 +473,13 @@ class UDPPublisher(Node):
 				pickle.dump(self.datapoints, f)
 			self.datapoints = None
 
-			with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}_LINE.pkl", "wb") as f:
-				pickle.dump(self.lines, f)
-			self.lines = None
+			# with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}_LINE.pkl", "wb") as f:
+			# 	pickle.dump(self.lines, f)
+			# self.lines = None
 			
-			with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}_CLOSEST.pkl", "wb") as f:
-				pickle.dump(self.closest, f)
-			self.closest = None
+			# with open(f"/home/nvidia/ros2_ws/src/cavrel-platooning/missions/datapoints/py3_{self.car}_{self.track_name}_{formatted_date}_CLOSEST.pkl", "wb") as f:
+			# 	pickle.dump(self.closest, f)
+			# self.closest = None
 
 			emergency_disarm_req = CommandLong.Request()
 			emergency_disarm_req.broadcast = False

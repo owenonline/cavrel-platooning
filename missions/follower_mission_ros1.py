@@ -31,7 +31,7 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.2
+K = 0.25
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 CAR_LENGTH = 0.779
@@ -118,6 +118,12 @@ class UDPPublisher:
         
         while True:
             raw_input()
+            now = datetime.now()
+            formatted_date = now.strftime('%H_%M_%d')
+            file_path = "missions/datapoints/py2_{car}_{track}_{date}.pkl".format(car=self.car, track=self.track_name, date=formatted_date)
+            
+            with open(file_path, "wb") as f:
+                pickle.dump(self.datapoints, f)
             self.mission_status = DISARMING
             response = self.arming_service(False)
             if response.success:
@@ -194,7 +200,7 @@ class UDPPublisher:
                 heading = head2
                 targets.append((x2, y2, heading, velocity, self.car - i, accel))
 
-        self.datapoints.append([(x, y, h, v, a) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, self.accel)])
+        self.datapoints.append([(x, y, h, v, a[0], a[1]) for x, y, h, v, _, a in targets] + [(ex, ey, eh, ev, self.accel.x, self.accel.y)])
 
         def minimization_objective(params):
             v, head = params

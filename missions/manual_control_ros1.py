@@ -117,9 +117,11 @@ class UDPPublisher:
         elif self.mission_status == ABORT:
             print("Aborting mission.")
 
-            self.datapoints = None
-            self.killswitch_service(False, 400, 0, 0.0, 21196.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-            self.mission_status = MISSIONCOMPLETE
+            self.mission_status = DISARMING
+            response = self.arming_service(False)
+            if response.success:
+                print("Disarmed")
+                self.mission_status = MISSIONCOMPLETE
 
 if __name__ == '__main__':
     udp_publisher = UDPPublisher()
