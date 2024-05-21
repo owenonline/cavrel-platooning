@@ -31,13 +31,13 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.25
+K = 0.2
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0
 DUE_EAST = 90
-SPEED_LIMIT = 2.2
+SPEED_LIMIT = 5
 geodesic = pyproj.Geod(ellps='WGS84')
 
 # set up args
@@ -302,6 +302,7 @@ class UDPPublisher:
         heading_diff = target_head - head_ego
 
         dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
+        v_ego = max(v_ego, 1)
         cte = np.arctan2(K*dist, v_ego)
         cte = np.rad2deg(cte)
         steer = heading_diff + cte

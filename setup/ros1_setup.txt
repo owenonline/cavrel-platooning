@@ -6,3 +6,4 @@ rosservice call /mavros/set_stream_rate '
 stream_id: 0
 message_rate: 20
 on_off: 1'
+python OpenConvoy/follower_mission.py ros1 --car_number=2 --track_path="missions/tracks/parking_loop.json" --save_path="missions/datapoints"

@@ -40,14 +40,14 @@ ABORT = -1
 EARTH_RADIUS = 6371e3
 KPV = 0.3
 KDV = 0.5
-K = 0.3
+K = 0.2
 LISTEN_INTERVAL = 0.01
 MAX_STEER = 30
 WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 2.2
+SPEED_LIMIT = 5
 geodesic = pyproj.Geod(ellps='WGS84')
 
 # set up args
@@ -243,17 +243,11 @@ class UDPPublisher(Node):
 			return total_cost
 		
 		bounds = Bounds([0, -360], [10, 360])
-		_, _, head, v, _, _ = targets[0]
+		_, _, head, v, _, _ = targets[-1]
 
-		guesses = [[0, head], [v, head], [5, head]]
-		best_score = np.inf
-		best = None
-		for guess in guesses:
-			res = minimize(minimization_objective, guess, method='SLSQP', bounds=bounds)
-			if res.fun < best_score:
-				best = res
+		res = minimize(minimization_objective, [v, head], method='SLSQP', bounds=bounds)
 
-		return best
+		return res
 	
 	def coords_to_local(self, target_lat, target_lon):
 		"""Converts GPS coordinates to local cartesian coordinates with respect to the track center point."""
@@ -326,9 +320,17 @@ class UDPPublisher(Node):
 		x0_opt, y0_opt, dx_opt, dy_opt = result.x
 		heading_diff = target_head - head_ego
 
+		if heading_diff > 180:
+			heading_diff -= 360
+		elif heading_diff < -180:
+			heading_diff += 360
+
 		dist, closest = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
+		v_ego = max(v_ego, 1)
 		cte = np.arctan2(K*dist, v_ego)
 		cte = np.rad2deg(cte)
+
+		print(f"heading error: {heading_diff} crosstrack error: {cte} line params: {result.x} ego pos: ({ex1}, {ey1})")
 
 		steer = heading_diff + cte
 		return steer
@@ -429,7 +431,7 @@ class UDPPublisher(Node):
 				new_speed = 0
 
 			print(f"setting speed {new_speed} m/s and heading delta {delta} | Current speed and heading: {v_ego} {head_ego}\n")
-
+			delta = np.clip(delta, -MAX_STEER, MAX_STEER)
 			delta = np.radians(delta)
 			head_ego = np.radians(head_ego)
 

@@ -146,6 +146,7 @@ if __name__ == '__main__':
     for (lat, lon, head) in full_track:
         # randomly drop packets
         if args.drop_rate > 0 and random.random() < args.drop_rate:
+            sleep(args.broadcast_int)
             continue
 
         # send the packet
