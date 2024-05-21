@@ -39,7 +39,7 @@ class ROSArgs:
         self.follow_distance = float(args.follow_distance)
         self.speed_limit = float(args.speed_limit)
 
-class Control:
+class Control(object):
     def __init__(self, rosargs, *args):
         self.args = rosargs
         super().__init__(*args)
