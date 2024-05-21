@@ -40,7 +40,7 @@ class ROSArgs:
         self.speed_limit = float(args.speed_limit)
 
 class Control:
-    def __init__(self, rosargs: ROSArgs, *args):
+    def __init__(self, rosargs, *args):
         self.args = rosargs
         super().__init__(*args)
 
