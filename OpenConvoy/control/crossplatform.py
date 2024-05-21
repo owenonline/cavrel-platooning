@@ -22,21 +22,22 @@ EARTH_RADIUS = 6371e3
 DUE_EAST = 90
 
 class ROSArgs:
-    car_number: int
-    car_length: float
-    broadcast_interval: int
-    listen_interval: float
-    drop_rate: float
-    track_name: str
-    center_lat: float
-    center_lon: float
-    center_orientation: float
-    save_path: str
-    kpv: float
-    kdv: float
-    k: float
-    follow_distance: float
-    speed_limit: float
+    def __init__(self, args):
+        self.car_number = int(args.car_number)
+        self.car_length = float(args.car_length)
+        self.broadcast_interval = float(args.broadcast_interval)
+        self.listen_interval = float(args.listen_interval)
+        self.drop_rate = float(args.drop_rate)
+        self.track_name = args.track_name
+        self.center_lat = float(args.center_lat)
+        self.center_lon = float(args.center_lon)
+        self.center_orientation = float(args.center_orientation)
+        self.save_path = args.save_path
+        self.kpv = float(args.kpv)
+        self.kdv = float(args.kdv)
+        self.k = float(args.k)
+        self.follow_distance = float(args.follow_distance)
+        self.speed_limit = float(args.speed_limit)
 
 class Control:
     def __init__(self, rosargs: ROSArgs, *args):
