@@ -48,9 +48,9 @@ class ROS1Control(Control):
         self.stop_thread.start()
 
         # Timed components
-        rospy.Timer(rospy.Duration(self.args.broadcast_interval), self.broadcast_timer_callback)
-        rospy.Timer(rospy.Duration(self.args.listen_interval), self.listen_timer_callback)
-        rospy.Timer(rospy.Duration(self.args.broadcast_interval), self.mission_timer_callback)
+        rospy.Timer(rospy.Duration(self.args.broadcast_interval), lambda event: self.broadcast_timer_callback())
+        rospy.Timer(rospy.Duration(self.args.listen_interval), lambda event: self.listen_timer_callback())
+        rospy.Timer(rospy.Duration(self.args.broadcast_interval), lambda event: self.mission_timer_callback())
 
         rospy.spin()
 

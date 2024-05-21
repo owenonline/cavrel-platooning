@@ -65,7 +65,7 @@ class Control(object):
         mreq = struct.pack('4sL', group, socket.INADDR_ANY)
         self.listen_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
-    def broadcast_timer_callback(self, event):
+    def broadcast_timer_callback(self):
         """Broadcasts the car's current GPS position and heading to all other cars in the network, dropping packets at a specified rate."""
 
         if self.satellite is None or self.heading is None or (self.args.drop_rate > 0 and random.random() < self.args.drop_rate):
@@ -75,7 +75,7 @@ class Control(object):
         msg = msg.encode()
         self.broadcast_sock.sendto(msg, ('224.0.0.1', 5004))
 
-    def listen_timer_callback(self, event):
+    def listen_timer_callback(self):
         """Listens for and stores the latest broadcasts from other cars in the network."""
 
         data, _ = self.listen_sock.recvfrom(1024)
