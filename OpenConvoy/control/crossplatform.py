@@ -90,7 +90,7 @@ class Control(object):
             self.car_positions[data_json['car']] = self.car_positions[data_json['car']][-4:]
 
         # determine that the beacon is broadcasting if we have a history of 2 messages from it
-        if len(self.car_positions[0] >= 2):
+        if len(self.car_positions[0]) >= 2:
             self.beacon_started = True
 
     def disarm(self):
