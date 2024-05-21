@@ -3,7 +3,7 @@ import argparse
 import json
 
 parser = argparse.ArgumentParser()
-parser.add_argument('version', type=str, choices=['ros1', 'ros2'])
+parser.add_argument('ros_version', type=str, choices=['ros1', 'ros2'])
 # parser.add_argument('convoy_algorithm', type=str, choices=['platoon', 'cacc'])
 parser.add_argument('--car_number', type=int, default=1, help='position of the car in the platoon. 0 is reserved for the beacon.')
 parser.add_argument('--car_length', type=float, default=0.779, help='length of the cars in front of the current vehicle. They must be the same length.')
