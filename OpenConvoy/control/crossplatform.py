@@ -42,7 +42,7 @@ class ROSArgs:
 class Control(object):
     def __init__(self, rosargs, *args):
         self.args = rosargs
-        super().__init__(*args)
+        super(Control, self).__init__(*args)
 
         self.datapoints = []
         self.beacon_started = False
