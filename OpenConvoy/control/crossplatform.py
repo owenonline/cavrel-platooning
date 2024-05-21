@@ -254,7 +254,7 @@ class Control:
         cte = np.arctan2(self.args.k*dist, v_ego)
         cte = np.rad2deg(cte) * cte_scale
 
-        print(f"heading error: {heading_diff} crosstrack error: {cte} line params: {result.x} ego pos: ({ex1}, {ey1})")
+        print("heading error: {heading_diff} crosstrack error: {cte} line params: {result.x} ego pos: ({ex1}, {ey1})".format(heading_diff=heading_diff, cte=cte, result=result, ex1=ex1, ey1=ey1))
 
         steer = heading_diff + cte
         return steer
