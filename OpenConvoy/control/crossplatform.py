@@ -287,7 +287,7 @@ class Control(object):
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         
-        file_name = "py2_{car}_{time}_{droprate}.pkl".format(car=self.args.car_number, time=formatted_time, droprate=self.args.droprate)
+        file_name = "py2_{car}_{time}_{droprate}.pkl".format(car=self.args.car_number, time=formatted_time, droprate=self.args.drop_rate)
         file_path = os.path.join(save_path, file_name)
         
         with open(file_path, "wb") as f:
