@@ -18,7 +18,7 @@ ABORT = -1
 
 class ROS1Control(Control):
     def __init__(self, args):
-        super().__init__(args)
+        super(ROS1Control, self).__init__(args)
         rospy.init_node('udp_publisher')
 
         self.movement_message = Twist()
