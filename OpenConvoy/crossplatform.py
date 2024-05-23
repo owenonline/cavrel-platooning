@@ -227,7 +227,6 @@ class Control(object):
             latitude=self.satellite.latitude,
             longitude=self.satellite.longitude,
             elevation=self.satellite.altitude,
-            position_accuracy=self.satellite.position_covariance,
             speed=np.sqrt(self.telem.twist.twist.linear.x**2 + self.telem.twist.twist.linear.y**2),
             heading=self.heading.data,
             acceleration=np.sqrt(self.imu.linear_acceleration.x**2 + self.imu.linear_acceleration.y**2),
