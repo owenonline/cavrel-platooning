@@ -8,6 +8,10 @@ from time import time, sleep
 import argparse
 import threading
 import numpy as np
+import sys
+import os
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(script_dir, os.pardir)))
 from OpenConvoy.crossplatform import BasicSafetyMessage
 
 # constants
@@ -32,9 +36,9 @@ parser.add_argument('--drop_rate', type=float, default=0.0)
 def calculate_straight(start, end, seg_dist, speed):
     bearing, _, dist = geodesic.inv(start[1], start[0], end[1], end[0])
     seg_count = int(dist/seg_dist)
-    segs = [(start[0], start[1], bearing)]
+    segs = [(start[0], start[1], bearing, speed)]
     for _ in range(seg_count):
-        lat_prev, lon_prev, _ = segs[-1]
+        lat_prev, lon_prev, _ , _= segs[-1]
         lon_next, lat_next, _ = geodesic.fwd(lon_prev, lat_prev, bearing, seg_dist)
         segs.append((lat_next, lon_next, bearing, speed))
     return segs, bearing

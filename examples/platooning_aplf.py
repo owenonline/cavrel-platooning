@@ -1,3 +1,7 @@
+import os
+import sys
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(script_dir, os.pardir)))
 from OpenConvoy.crossplatform import ROSArgs
 import argparse
 import json
