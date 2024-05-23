@@ -69,7 +69,7 @@ class ROS1Control(Control):
             self.publisher.publish(self.movement_message)
             self.rate.sleep()
 
-    def __mission_timer_callback(self, event):
+    def __mission_timer_callback(self):
         """Main loop for vehicle control. Handles the arming, moving, and disarming of the rover."""
 
         if self.mission_status == MISSIONSTART:
