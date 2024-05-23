@@ -1,0 +1,9 @@
+ros2:
+- cacc aplf: python examples/cacc_aplf.py ros2 --track_path="tracks/spl.json" --save_path="datapoints" --kdv=1.1
+- cacc r-lookahead: python examples/cacc_r_lookahead.py ros2 --track_path="tracks/spl.json" --save_path="datapoints" --kdv=1.1
+- platooning aplf: python examples/platooning_aplf.py ros2 --track_path="tracks/spl.json" --save_path="datapoints" --kdv=1.1
+
+ros1:
+- cacc aplf: python examples/cacc_aplf.py ros1 --track_path="tracks/spl.json" --save_path="datapoints" --car_number=2
+- cacc r-lookahead: python examples/cacc_r_lookahead.py ros1 --track_path="tracks/spl.json" --save_path="datapoints" --car_number=2
+- platooning aplf: python examples/platooning_aplf.py ros1 --track_path="tracks/spl.json" --save_path="datapoints" --car_number=2

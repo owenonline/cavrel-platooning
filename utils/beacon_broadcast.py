@@ -8,6 +8,7 @@ from time import time, sleep
 import argparse
 import threading
 import numpy as np
+from OpenConvoy.crossplatform import BasicSafetyMessage
 
 # constants
 EARTH_RADIUS = 6371e3
@@ -28,14 +29,14 @@ parser.add_argument('--track_path', type=str, default="missions/tracks/bus_loop_
 parser.add_argument('--broadcast_int', type=float, default=0.1)
 parser.add_argument('--drop_rate', type=float, default=0.0)
 
-def calculate_straight(start, end, seg_dist):
+def calculate_straight(start, end, seg_dist, speed):
     bearing, _, dist = geodesic.inv(start[1], start[0], end[1], end[0])
     seg_count = int(dist/seg_dist)
     segs = [(start[0], start[1], bearing)]
     for _ in range(seg_count):
         lat_prev, lon_prev, _ = segs[-1]
         lon_next, lat_next, _ = geodesic.fwd(lon_prev, lat_prev, bearing, seg_dist)
-        segs.append((lat_next, lon_next, bearing))
+        segs.append((lat_next, lon_next, bearing, speed))
     return segs, bearing
 
 def calculate_turn(start, start_bearing, end, end_bearing, seg_dist, direction='left'):
@@ -104,7 +105,7 @@ def calculate_track(straights, turns, broadcast_interval):
         seg_dist = broadcast_interval*straight['speed']
         start = (straight['start']['lat'], straight['start']['lon'])
         end = (straight['end']['lat'], straight['end']['lon'])
-        segs, bearing = calculate_straight(start, end, seg_dist)
+        segs, bearing = calculate_straight(start, end, seg_dist, straight['speed'])
         straight_points.append(segs)
         bearings.append(bearing)
 
@@ -143,14 +144,26 @@ if __name__ == '__main__':
     stop_thread.daemon = True
     stop_thread.start()
 
-    for (lat, lon, head) in full_track:
+    for (lat, lon, head, speed) in full_track:
         # randomly drop packets
         if args.drop_rate > 0 and random.random() < args.drop_rate:
             sleep(args.broadcast_int)
             continue
 
         # send the packet
-        msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": (0,0)})
+        bsm_msg = BasicSafetyMessage(
+            time=time(),
+            latitude=lat,
+            longitude=lon,
+            speed=speed,
+            heading=head,
+            acceleration=0,
+            event_flags={
+                "abort": False,
+                "car": 0,
+            }
+        )
+        msg = bsm_msg.to_json()
         print(msg)
         msg = msg.encode()
         sock.sendto(msg, ('224.0.0.1', 5004))

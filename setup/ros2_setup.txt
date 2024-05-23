@@ -2,4 +2,3 @@ source ros2_ws/install/setup.bash
 sudo chmod 777 /dev/ttyTHS0
 ros2 run mavros mavros_node --ros-args --param fcu_url:=/dev/ttyTHS0:921600 > mavros_out.txt 2>&1 &
 ros2 service call /mavros/set_stream_rate mavros_msgs/srv/StreamRate "{stream_id: 0, message_rate: 20, on_off: 1}"
-python OpenConvoy/follower_mission.py ros2 --track_path="missions/tracks/parking_loop.json" --save_path="missions/datapoints"
