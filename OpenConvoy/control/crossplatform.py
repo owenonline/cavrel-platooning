@@ -36,6 +36,7 @@ class ROSArgs:
         self.kpv = float(args.kpv)
         self.kdv = float(args.kdv)
         self.k = float(args.k)
+        self.ks = float(args.ks)
         self.follow_distance = float(args.follow_distance)
         self.speed_limit = float(args.speed_limit)
 
@@ -250,9 +251,8 @@ class Control(object):
 
         dist = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
         v_ego = max(v_ego, 1)
-        cte_scale = min(1, v_ego/1) # reduces the influences of CTE when speed is low, to prevent oversteering
-        cte = np.arctan2(self.args.k*dist, v_ego)
-        cte = np.rad2deg(cte) * cte_scale
+        cte = np.arctan2(self.args.k*dist, self.args.ks + v_ego)
+        cte = np.rad2deg(cte)
 
         print("heading error: {heading_diff} crosstrack error: {cte} line params: {result.x} ego pos: ({ex1}, {ey1})".format(heading_diff=heading_diff, cte=cte, result=result, ex1=ex1, ey1=ey1))
 
