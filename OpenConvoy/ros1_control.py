@@ -130,4 +130,5 @@ class ROS1Control(Control):
             if response.success:
                 disarmed = True
                 print("Disarmed")
+                break
         self.mission_status = MISSIONCOMPLETE

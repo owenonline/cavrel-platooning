@@ -25,22 +25,22 @@ class ROSArgs:
     def __init__(self, car_number, car_length, broadcast_interval, listen_interval, drop_rate, track_name,
                  center_lat, center_lon, center_orientation, save_path, speed_limit, kpv=None, kdv=None, k=None, ks=None, 
                  follow_distance=None, **kwargs):
-        self.car_number = int(car_number)
-        self.car_length = float(car_length)
-        self.broadcast_interval = float(broadcast_interval)
-        self.listen_interval = float(listen_interval)
-        self.drop_rate = float(drop_rate)
+        self.car_number = car_number
+        self.car_length = car_length
+        self.broadcast_interval = broadcast_interval
+        self.listen_interval = listen_interval
+        self.drop_rate = drop_rate
         self.track_name = track_name
-        self.center_lat = float(center_lat)
-        self.center_lon = float(center_lon)
-        self.center_orientation = float(center_orientation)
+        self.center_lat = center_lat
+        self.center_lon = center_lon
+        self.center_orientation = center_orientation
         self.save_path = save_path
-        self.kpv = float(kpv)
-        self.kdv = float(kdv)
-        self.k = float(k)
-        self.ks = float(ks)
-        self.follow_distance = float(follow_distance)
-        self.speed_limit = float(speed_limit)
+        self.kpv = kpv
+        self.kdv = kdv
+        self.k = k
+        self.ks = ks
+        self.follow_distance = follow_distance
+        self.speed_limit = speed_limit
         
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -245,7 +245,7 @@ class Control(object):
         data_json = json.loads(data.decode())
         bsm_message = BasicSafetyMessage(**data_json)
 
-        if bsm_message.event_flags['abort']:
+        if bsm_message.event_flags['abort'] and not self.mission_status in [ABORT, DISARMING, MISSIONCOMPLETE]:
             self._disarm()
         
         if self.should_listen(bsm_message.event_flags['car']):
