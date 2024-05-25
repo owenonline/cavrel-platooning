@@ -109,7 +109,9 @@ class ROS1Control(Control):
                     print("Optimization failed:", targets.message)
                     return
                 
-                v, head = targets.x
+                # v, head = targets.x
+                v = targets.x[0]
+                head = 0
                 print("calculated target v {v} and heading {head}".format(v=v, head=head))
 
                 msg.linear.x, msg.linear.y = self._get_applied_motion(v, head)
