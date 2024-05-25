@@ -189,7 +189,7 @@ class Control(object):
             x0, y0, dx, dy = params
             distances = []
             for (x, y) in points:
-                distance, _ = self.distance_to_line(x0, y0, dx, dy, x, y)
+                distance = self.distance_to_line(x0, y0, dx, dy, x, y)
                 distances.append(distance)
             return distances
         
