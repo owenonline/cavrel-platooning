@@ -168,6 +168,7 @@ if __name__ == '__main__':
             }
         )
         msg = bsm_msg.to_json()
+        # msg = json.dumps({"car": 0, "lat": lat, "lon": lon, "head": head, "time": time(), "abort": ABORT, "accel": (0,0)})
         print(msg)
         msg = msg.encode()
         sock.sendto(msg, ('224.0.0.1', 5004))

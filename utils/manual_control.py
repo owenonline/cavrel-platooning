@@ -42,7 +42,7 @@ WHEELBASE = 0.48
 CAR_LENGTH = 0.779
 FOLLOW_DISTANCE = 2.0 # meters behind the immediate preceding vehicle, 4 meters behind the second preceding vehicle, etc.
 DUE_EAST = 90
-SPEED_LIMIT = 2.2
+SPEED_LIMIT = 10
 geodesic = pyproj.Geod(ellps='WGS84')
 
 class UDPPublisher(Node):

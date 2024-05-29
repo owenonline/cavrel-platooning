@@ -126,9 +126,7 @@ class Control(object):
     def minimization_objective(self, params):
         """Cost function to minimize to implement cooperative driving policy. By default implements platooning. Override this function in your subclass to implement a different policy."""
 
-        # v, head = params
-        v = params[0]
-        head = 0
+        v, head = params
         head = np.radians(head)
         x, y = self.coords_to_local(self.state.latitude, self.state.longitude)
 
@@ -148,8 +146,6 @@ class Control(object):
 
             x_goal = x_sim_target - goal_follow_distance*np.sin(head_target)
             y_goal = y_sim_target - goal_follow_distance*np.cos(head_target)
-
-            # print("goal follow: {gfd}, head target: {th}, vtarget: {vt}, selected {v} {h}".format(gfd=goal_follow_distance, th=value.heading, vt=value.speed, v=v, h=np.rad2deg(head)))
 
             total_cost += np.sqrt((x_goal - x_sim_ego)**2 + (y_goal - y_sim_ego)**2)
 
@@ -205,10 +201,10 @@ class Control(object):
         x0_opt, y0_opt, dx_opt, dy_opt = result.x
         heading_diff = target_head - head_ego
 
-        # if heading_diff > 180:
-        #     heading_diff -= 360
-        # elif heading_diff < -180:
-        #     heading_diff += 360
+        if heading_diff > 180:
+            heading_diff -= 360
+        elif heading_diff < -180:
+            heading_diff += 360
 
         dist = self.distance_to_line(x0_opt, y0_opt, dx_opt, dy_opt, ex1, ey1)
         cte = np.arctan2(self.args.k*dist, self.args.ks + v_ego)
@@ -273,11 +269,9 @@ class Control(object):
         """Calculates the target speed and heading for the ego vehicle based on the positions of the other cars in the network. 
         Uses the implemented minimization objective, which by default is for platooning."""
 
-        # bounds = [(0, 10), (-360, 360)]
-        bounds = [(0, 2.5)]
+        bounds = [(0, 10), (-360, 360)]
         head, v = self.car_positions[0][-1].heading, self.car_positions[0][-1].speed
-        # res = minimize(lambda params: self.minimization_objective(params), [v, head], method='SLSQP', bounds=bounds)
-        res = minimize(lambda params: self.minimization_objective(params), [v], method='SLSQP', bounds=bounds)
+        res = minimize(lambda params: self.minimization_objective(params), [v, head], method='SLSQP', bounds=bounds)
         return res
 
     def _get_applied_motion(self, v, head):
@@ -294,10 +288,12 @@ class Control(object):
         delta = np.clip(delta, -30, 30)
         delta_rad = np.radians(delta)
 
+        delta_rad = 0
+
         x = -new_speed * math.sin(delta_rad)
         y = new_speed * math.cos(delta_rad)
 
-        print("applying delta {delta} and speed {speed} {x} {y}".format(delta=delta, speed=new_speed, x=x, y=y))
+        print("applying delta {delta} and speed {speed} {x} {y}".format(delta=delta_rad, speed=new_speed, x=x, y=y))
 
         return x, y
 
