@@ -18,6 +18,7 @@ parser.add_argument('--accel_max', type=float, default=1.0)
 parser.add_argument('--accel_min', type=float, default=-1.0)
 parser.add_argument('--steer_max', type=float, default=90.0)
 parser.add_argument('--steer_min', type=float, default=-90.0)
+parser.add_argument('--velocity_weight', type=float, default=1.0)
 parser.add_argument('--broadcast_interval', type=float, default=0.1)
 parser.add_argument('--listen_interval', type=float, default=0.01)
 parser.add_argument('--drop_rate', type=float, default=0.0)
@@ -59,6 +60,7 @@ if __name__ == '__main__':
         accel_min=args.accel_min,
         steer_max=args.steer_max,
         steer_min=args.steer_min,
+        velocity_weight=args.velocity_weight,
         broadcast_interval=args.broadcast_interval,
         listen_interval=args.listen_interval,
         drop_rate=args.drop_rate,
