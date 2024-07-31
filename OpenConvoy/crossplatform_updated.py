@@ -24,7 +24,7 @@ DUE_NORTH = 0
 
 
 class ROSArgs:
-    def __init__(self, car_number, wheelbase, follow_distance=None, speed_max=None, speed_min=None, accel_max=None, accel_min=None, steer_max=None, steer_min=None,
+    def __init__(self, car_number, wheelbase, follow_distance=None, speed_max=None, speed_min=None, accel_max=None, accel_min=None, steer_max=None, steer_min=None, velocity_weight=None,
                  broadcast_interval=None, listen_interval=None, drop_rate=None, track_name=None, center_lat=None, center_lon=None, center_orientation=None, heading_con_type=None, speed_con_type=None, 
                  P_Kp=None, I_Ki=None, PI_Kp=None, PI_Ki=None, PD_Kp=None, PD_Kd=None, PID_Kp=None, PID_Ki=None, PID_Kd=None, k=None, ks=None, save_path=None, **kwargs):
 
@@ -38,6 +38,7 @@ class ROSArgs:
         self.accel_min = accel_min    # -1.0
         self.steer_max = steer_max    #unit: degree
         self.steer_min = steer_min    #unit: degree
+        self.velocity_weight = velocity_weight
         
         self.broadcast_interval = broadcast_interval
         self.listen_interval = listen_interval
@@ -518,7 +519,12 @@ class Control(object):
             # print("goal follow: {gfd}, head target: {th}, vtarget: {vt}, selected {v} {h}".format(gfd=goal_follow_distance, th=value.heading, vt=value.speed, v=v, h=np.rad2deg(yaw_ego)))
             
             # Cost computation 
-            total_cost += np.sqrt((x_ego_goal - x_ego_future)**2 + (y_ego_goal - y_ego_future)**2)
+            distance_cost = np.sqrt((x_ego_goal - x_ego_future)**2 + (y_ego_goal - y_ego_future)**2)
+            total_cost += distance_cost
+            
+        # Penalize low velocities
+        velocity_penalty = 1 / (v_ego + 1e-5)  # Add a small number to avoid division by zero
+        total_cost += velocity_penalty * self.args.velocity_weight  # Adjust the weight as necessary
 
         return total_cost
 
@@ -532,7 +538,7 @@ class Control(object):
         # head, v = self.car_positions[0][-1].heading, self.car_positions[0][-1].speed
         # response = minimize(lambda params: self.minimization_objective(params), [v], method='SLSQP', bounds=bounds)
 
-        bounds = [(0, 4), (-180, 180)]
+        bounds = [(0.1, 4.0), (-180, 180)]
         v, yaw = self.car_positions[0][-1].speed, self.car_positions[0][-1].heading
         response = minimize(lambda params: self.minimization_objective(params), [v, yaw], method='SLSQP', bounds=bounds)
         print("calculated target v {v} and yaw {yaw}".format(v=v, yaw=yaw))
