@@ -1,4 +1,4 @@
-dfrom scipy.optimize import minimize, least_squares
+from scipy.optimize import minimize, least_squares
 from collections import defaultdict, deque
 from datetime import datetime
 from time import time
