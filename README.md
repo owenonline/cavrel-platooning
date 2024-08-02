@@ -95,3 +95,17 @@ Finally, run the following commands on your computer to start the leader and mov
 ```
 python utils/beacon_broadcase.py --track_path=[YOUR TRACK] --broadcast_int=[YOUR BROADCAST INTERVAL] --drop_rate=[OPTIONAL, how frequently to skip sending a message to simulate communication issues]
 ```
+
+## Citation
+If you use this code, please cite our paper and those referenced for the base models
+```
+@misc{burns2024openconvoyuniversalplatformrealworld,
+      title={OpenConvoy: Universal Platform for Real-World Testing of Cooperative Driving Systems}, 
+      author={Owen Burns and Hossein Maghsoumi and Yaser Fallah and Israel Charles},
+      year={2024},
+      eprint={2405.18600},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2405.18600}, 
+}
+```
